@@ -15,7 +15,7 @@ ad_page_contract {
 } {
     return_url:optional
     project_id:integer
-    { delete_task:multiple "" }
+    { delete_task_id:multiple "" }
     billable_units:array,optional
     billable_units_interco:array,optional
     end_date:array,optional
@@ -31,6 +31,7 @@ ad_page_contract {
     match75:array,optional
     match50:array,optional
     match0:array,optional
+    description:array,optional
 
     { target_language_id:multiple {}}
     { task_name_file "" }
@@ -126,6 +127,8 @@ switch -glob $action {
 
 	foreach task_id $task_list {
 
+	    set description_value $description($task_id)
+
 	    # Use default values if no InterCo values are available:
 	    if {![info exists billable_units_interco($task_id)]} { 
 		set billable_units_interco($task_id) $billable_units($task_id) 
@@ -180,7 +183,8 @@ switch -glob $action {
                 	task_status_id= '$task_status($task_id)',
                 	task_type_id= '$task_type($task_id)',
 			billable_units = :billable_value,
-			billable_units_interco = :billable_value_interco
+			billable_units_interco = :billable_value_interco,
+                        description = :description_value
 			$trados_reuse_update
                     where project_id=:project_id
                     and task_id=:task_id"
@@ -243,7 +247,7 @@ switch -glob $action {
 		# Store deadline in with the task
 		set update_sql "
 			update im_trans_tasks set 
-				end_date = :task_end_date::timestamptz
+				end_date = to_date(:task_end_date,:date_format)
 			where	project_id = :project_id
 				and task_id = :task_id"
 		if {[catch {
@@ -277,7 +281,7 @@ switch -glob $action {
     "delete" {
 	# "Del" button pressed: delete the marked tasks
 	#
-	foreach task_id $delete_task {
+	foreach task_id $delete_task_id {
 	    ns_log Notice "delete task: $task_id"
 
 	    if { [catch {
@@ -311,7 +315,7 @@ switch -glob $action {
 	#
 	
 	#checking of the batch
-	if {[llength $delete_task] <= 1} {
+	if {[llength $delete_task_id] <= 1} {
 	    ad_return_complaint 1 "<p>[lang::message::lookup "" intranet-translation.Less_then_two_files_selected "Less then two files selected"]</b>:<br>
 		[lang::message::lookup "" intranet-translation.No_need_for_batching_msg "
 			There is no need for batching for less then two file.
@@ -320,7 +324,7 @@ switch -glob $action {
 	    ad_script_abort
 	}
 
-#	im_translation_batching_check_tasks $delete_task
+#	im_translation_batching_check_tasks $delete_task_id
 
 	# Base path to files in the filestorage
 	db_1row projects_info "
@@ -372,7 +376,7 @@ switch -glob $action {
 			task_type_id, task_status_id, source_language_id, target_language_id, task_uom_id,
 			trans_id, edit_id, proof_id, other_id, project_id
 		from	im_trans_tasks
-		where	task_id in ([join $delete_task ", "])
+		where	task_id in ([join $delete_task_id ", "])
 	"
   
 	db_foreach task_duplicate $sql_query { 
@@ -501,7 +505,7 @@ switch -glob $action {
 	exec /bin/bash -c "$zip_command"
     
 	# Delete the original tasks
-  	foreach task_id $delete_task {
+  	foreach task_id $delete_task_id {
 	    if { [catch {
 		if {$trans_quality_exists_p} {
 		    db_dml del_q_report_entries "delete from im_trans_quality_entries where report_id in (select report_id from im_trans_quality_reports where task_id = :task_id)"
