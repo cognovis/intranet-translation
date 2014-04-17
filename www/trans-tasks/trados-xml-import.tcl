@@ -301,7 +301,7 @@ for {set i 0} {$i < $trados_files_len} {incr i} {
 		    set pcrossfilerepeated_words [$analyseChildElement getAttribute $attr_words] 
 		    set pcrossfilerepeated_placeables [$analyseChildElement getAttribute $attr_placeables]
 		}
-		"total" {
+		"total" - "locked" {
 		    # ignore
 		}
 		"internalfuzzy" {
