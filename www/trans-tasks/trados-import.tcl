@@ -1,6 +1,6 @@
 # /packages/intranet-translation/www/trans-tasks/trados-import.tcl
 #
-# Copyright (C) 2003 - 2009 ]project-open[
+# Copyright (C) 2003-2014 ]project-open[
 #
 # All rights reserved. Please check
 # http://www.project-open.com/license/ for details.
@@ -445,6 +445,7 @@ ns_log Notice "trados-import: common_filename_comps=$common_filename_comps"
   <td>$task_name</td>
   <td>$px_words</td>
   <td>$prep_words</td>
+
   <td>$p100_words</td>
   <td>$p95_words</td>
   <td>$p85_words</td>

@@ -45,7 +45,7 @@ ad_proc -public im_trans_tm_integration_type_none {} { return 4204 }
 
 ad_proc -public im_package_translation_id { } {
 } {
-    return [util_memoize "im_package_translation_id_helper"]
+    return [util_memoize im_package_translation_id_helper]
 }
 
 ad_proc -private im_package_translation_id_helper {} {
@@ -83,9 +83,7 @@ ad_proc -public im_trans_task_type_select {
     Task Type" category entries and the reverts to "Intranet Project
     Type".
 } {
-    set trans_type_exists_p [util_memoize [list db_string ttypee "
-	select count(*) from im_categories where category_type = 'Intranet Translation Task Type'
-    "]]
+    set trans_type_exists_p [util_memoize [list db_string ttypee "select count(*) from im_categories where category_type = 'Intranet Translation Task Type'"]]
     if {$trans_type_exists_p} {
 	return [im_category_select -translate_p $translate_p -package_key $package_key -locale $locale -include_empty_p $include_empty_p -include_empty_name $include_empty_name "Intranet Translation Task Type" $select_name $default]
     } else {
@@ -100,18 +98,13 @@ ad_proc -public im_trans_task_type_options {
 } {
     Return a list of options for translation task type.
 } {
-    set trans_type_exists_p [util_memoize [list db_string ttypee "
-	select count(*) from im_categories where category_type = 'Intranet Translation Task Type'
-    "]]
-
+    set trans_type_exists_p [util_memoize [list db_string ttypee "select count(*) from im_categories where category_type = 'Intranet Translation Task Type'"]]
     if {$trans_type_exists_p} {
 	return [db_list_of_lists type "select category, category_id from im_categories where category_type = 'Intranet Trans Task Type'"]
     } else {
 	return [db_list_of_lists type "select category, category_id from im_categories where category_type = 'Intranet Project Type'"]
     }
 }
-
-
 
 
 # -------------------------------------------------------------------
@@ -474,6 +467,9 @@ ad_proc -public im_trans_trados_matrix_component {
 <td class=rowtitle align=center>f85%</td>
 <td class=rowtitle align=center>f75%</td>
 <td class=rowtitle align=center>f50%</td>
+
+<td class=rowtitle align=center>[lang::message::lookup "" intranet-translation.Locked "Locked"]</td>
+
 "
 
     set value_html "
@@ -494,6 +490,9 @@ ad_proc -public im_trans_trados_matrix_component {
 <td align=right>[expr round(1000.0 * $matrix(f85)) / 10.0]%</td>
 <td align=right>[expr round(1000.0 * $matrix(f75)) / 10.0]%</td>
 <td align=right>[expr round(1000.0 * $matrix(f50)) / 10.0]%</td>
+
+<td align=right>[expr round(1000.0 * $matrix(locked)) / 10.0]%</td>
+
 "
 
     set html "
@@ -591,35 +590,23 @@ ad_proc -public im_trans_trados_matrix_calculate_helper {
     array set matrix [im_trans_trados_matrix $object_id]
 
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: Array found: [array get matrix]"
-    set task_units [expr \
-		    ($px_words * $matrix(x)) + \
-		    ($prep_words * $matrix(rep)) + \
-		    ($prep_words * $matrix(perf)) + \
-		    ($prep_words * $matrix(cfr)) + \
-		    ($p100_words * $matrix(100)) + \
-		    ($p95_words * $matrix(95)) + \
-		    ($p85_words * $matrix(85)) + \
-		    ($p75_words * $matrix(75)) + \
-		    ($p50_words * $matrix(50)) + \
-		    ($p0_words * $matrix(0)) + \
-		    ($p95_words * $matrix(f95)) + \
-		    ($p85_words * $matrix(f85)) + \
-		    ($p75_words * $matrix(f75)) + \
-		    ($p50_words * $matrix(f50)) \
-    ]
 
-    # Probably added by KH
-    # Until further clarification ignore fuzzy values 
     set task_units [expr \
                     ($px_words * $matrix(x)) + \
                     ($prep_words * $matrix(rep)) + \
+                    ($pcfr_words * $matrix(cfr)) + \
                     ($p100_words * $matrix(100)) + \
                     ($p95_words * $matrix(95)) + \
                     ($p85_words * $matrix(85)) + \
                     ($p75_words * $matrix(75)) + \
                     ($p50_words * $matrix(50)) + \
-                    ($p0_words * $matrix(0))  \
+                    ($p0_words * $matrix(0)) + \
+                    ($f95_words * $matrix(f95)) + \
+                    ($f85_words * $matrix(f85)) + \
+                    ($f75_words * $matrix(f75)) + \
+                    ($f50_words * $matrix(f50)) \
     ]
+
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: Found task_units: $task_units" 
     return $task_units
 }
@@ -671,7 +658,7 @@ ad_proc -public im_trans_trados_matrix_project { project_id } {
 	select	m.*,
 		acs_object.name(o.object_id) as object_name
 	from	acs_objects o,
-		im_trans_trados_matrix m
+im_trans_trados_matrix_project		im_trans_trados_matrix m
 	where	o.object_id = :project_id
 		and o.object_id = m.object_id(+)
     "
@@ -691,6 +678,8 @@ ad_proc -public im_trans_trados_matrix_project { project_id } {
     set matrix(f85) $match_f85
     set matrix(f75) $match_f75
     set matrix(f50) $match_f50
+
+    set matrix(locked) $locked
 
     set matrix(type) company
     set matrix(object) $project_id
@@ -734,6 +723,8 @@ ad_proc -public im_trans_trados_matrix_company { company_id } {
     set matrix(f85) $match_f85
     set matrix(f75) $match_f75
     set matrix(f50) $match_f50
+
+    set matrix(locked) $locked
 
     set matrix(type) company
     set matrix(object) $company_id
@@ -779,6 +770,7 @@ ad_proc -public im_trans_trados_matrix_internal { } {
     set matrix(f85) $match_f85
     set matrix(f75) $match_f75
     set matrix(f50) $match_f50
+    set matrix(locked) $locked
     set matrix(type) internal
     set matrix(object) 0
     return [array get matrix]
@@ -803,6 +795,7 @@ ad_proc -public im_trans_trados_matrix_default { } {
     set matrix(f85) 0.5
     set matrix(f75) 1.0
     set matrix(f50) 1.0
+    set matrix(locked) 1.0
     set matrix(type) default
     set matrix(object) 0
 
@@ -2114,8 +2107,6 @@ ad_proc im_task_status_component { user_id project_id return_url } {
 
     return $task_status_html
 }
-
-
 
 
 
