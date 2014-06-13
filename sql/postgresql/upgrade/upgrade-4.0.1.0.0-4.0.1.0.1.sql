@@ -1,5 +1,4 @@
--- 
--- packages/intranet-budget/sql/postgresql/upgrade/upgrade-0.2d11-0.2d12.sql
+-- upgrade-4.0.1.0.0-4.0.1.0.1.sql
 -- 
 -- Copyright (c) 2011, cognovís GmbH, Hamburg, Germany
 -- This program is free software: you can redistribute it and/or modify
