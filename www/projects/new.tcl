@@ -254,11 +254,15 @@ ad_form -extend -name $form_id -new_request {
     # Calculate the next project number by calculating the maximum of
     # the "reasonably build numbers" currently available
     set project_nr [im_next_project_nr -customer_id $company_id -parent_id $parent_id]
+    if {$project_name eq ""} {
+	set project_name $project_nr
+    }
 
     # Now set the values
     template::element::set_value $form_id project_nr $project_nr
     template::element::set_value $form_id company_id $company_id
-    
+    template::element::set_value $form_id project_name $project_name
+
 } -on_submit {
 
     if { ![exists_and_not_null zip_p] } {
