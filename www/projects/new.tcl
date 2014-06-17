@@ -311,7 +311,7 @@ ad_form -extend -name $form_id -new_request {
     }
     
     db_transaction {
-        set project_id [project::new \
+        set project_id [im_project::new \
                             -project_name $project_name \
                             -project_nr $project_nr \
                             -project_path $project_path \
