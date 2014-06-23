@@ -197,24 +197,36 @@ set help_text [_ acs-subsite.lt_Use_the_Browse_button]
 set options_list [list [list "Unzip File?"  "t"]]
 ad_form -extend -name $form_id -form {
     {company_contact_id:text(select),optional 
-	{label "[_ intranet-translation.Client_contact]"}
-	{options "$company_contact_options"}
+        {label "[_ intranet-translation.Client_contact]"}
+        {options "$company_contact_options"}
     }
     {source_language_id:text(select)
-	{label "[_ intranet-translation.Source_Language]"}
-	{options "$target_language_options"}
+        {label "[_ intranet-translation.Source_Language]"}
+        {options "$target_language_options"}
     }
     {target_language_ids:text(multiselect)
-	{label "[_ intranet-translation.Target_Languages]"}
-	{options "$target_language_options"}
+        {label "[_ intranet-translation.Target_Languages]"}
+        {options "$target_language_options"}
     }
+}
+
+#  Extend the form with all the skills except the languages
+if {[apm_package_installed_p "intranet-freelance"]} {
+    # Append the skills attributes
+    im_freelance_append_skills_to_form \
+        -object_subtype_id $dynfield_project_type_id \
+        -form_id $form_id \
+        -object_id $dynfield_project_id 
+} 
+
+ad_form -extend -name $form_id -form {
     {upload_file:file(file),optional
         {label "#acs-subsite.Filename#"}
         {help_text $help_text}
     }
     {zip_p:text(checkbox),optional
-	{label ""}
-	{options $options_list}
+        {label ""}
+        {options $options_list}
     }
 }
 
@@ -395,6 +407,7 @@ ad_form -extend -name $form_id -new_request {
         # Store dynamic fields
         
         ns_log Notice "/intranet/projects/new: im_dynfield::attribute_store -object_type $object_type -object_id $project_id -form_id $form_id"
+
         if {[info exists start_date]} {
             set start_date [template::util::date get_property sql_date $start_date]
         } else {
@@ -407,62 +420,70 @@ ad_form -extend -name $form_id -new_request {
             -object_id $project_id \
             -form_id $form_id
         
+
         set requires_report_p t
 
-	set target_language_ids [element get_values $form_id target_language_ids]
+        set target_language_ids [element get_values $form_id target_language_ids]
 	
-	# Save the information about the project target languages
-	# in the im_target_languages table
-	#
-	db_transaction {
+        # Save the information about the project target languages
+        # in the im_target_languages table
+        #
+        
+
 	    db_dml delete_im_target_language "delete from im_target_languages where project_id=:project_id"
 	    
 	    foreach lang $target_language_ids {
-		ns_log Notice "target_language=$lang"
-		set sql "insert into im_target_languages values ($project_id, $lang)"
-		db_dml insert_im_target_language $sql
+            ns_log Notice "target_language=$lang"
+            set sql "insert into im_target_languages values ($project_id, $lang)"
+            db_dml insert_im_target_language $sql
 		
-		if {[im_table_exists im_freelancers]} {
-		    im_freelance_add_required_skills -object_id $project_id -skill_type_id [im_freelance_skill_type_target_language] -skill_ids $lang
-		}
+            if {[im_table_exists im_freelancers]} {
+		        im_freelance_add_required_skills -object_id $project_id -skill_type_id [im_freelance_skill_type_target_language] -skill_ids $lang
+            }
 	    }
-	}
 
-	if {[info exists company_contact_id]} {db_dml update_project "update im_projects set company_contact_id = :company_contact_id where project_id = :project_id"}
-	if {[info exists source_language_id]} {db_dml update_project "update im_projects set source_language_id = :source_language_id where project_id = :project_id"}
-
-	# ---------------------------------------------------------------------
-	# Create the directory structure necessary for the project
-	# ---------------------------------------------------------------------
+        if {[info exists company_contact_id]} {db_dml update_project "update im_projects set company_contact_id = :company_contact_id where project_id = :project_id"}
+        if {[info exists source_language_id]} {
+        
+            # Add the source language as a skill
+            if {[im_table_exists im_freelancers]} {
+                im_freelance_add_required_skills -object_id $project_id -skill_type_id [im_freelance_skill_type_source_language] -skill_ids $source_language_id
+            }
+            db_dml update_project "update im_projects set source_language_id = :source_language_id where project_id = :project_id"
+        }
+    
+	    # ---------------------------------------------------------------------
+        # Create the directory structure necessary for the project
+        # ---------------------------------------------------------------------
 	
-	# If the filestorage module is installed...
-	set fs_installed_p [im_table_exists im_fs_folders]
-	if {$fs_installed_p && [exists_and_not_null upload_file]} {
+        # If the filestorage module is installed...
+        set fs_installed_p [im_table_exists im_fs_folders]
+        if {$fs_installed_p && [exists_and_not_null upload_file]} {
 	    
-	    set create_err ""
-	    if { [catch {
-		set create_err [im_filestorage_create_directories $project_id]
-	    } err_msg] } {
-		ad_return_complaint 1 "<li>err_msg: $err_msg<br>create_err: $create_err<br>"
-		return
-	    }
+	        set create_err ""
+            if { [catch {
+                set create_err [im_filestorage_create_directories $project_id]
+                } err_msg] } {
+                ad_return_complaint 1 "<li>err_msg: $err_msg<br>create_err: $create_err<br>"
+                return
+            }
 	    
-	    # Save the file in the correct directory
-	    set locale "en_US"
-	    set source [lang::message::lookup $locale intranet-translation.Workflow_source_directory "source"]
-	    set source_language [im_category_from_id $source_language_id]
+            # Save the file in the correct directory
+            set locale "en_US"
+            set source [lang::message::lookup $locale intranet-translation.Workflow_source_directory "source"]
+            set source_language [im_category_from_id $source_language_id]
 	    
-	    set project_dir [im_filestorage_project_path $project_id]
-	    set source_dir "$project_dir/${source}_$source_language"
-	    set tmp_filename [template::util::file::get_property tmp_filename $upload_file]
-	    set filename [template::util::file::get_property filename $upload_file]
+            set project_dir [im_filestorage_project_path $project_id]
+            set source_dir "$project_dir/${source}_$source_language"
+            set tmp_filename [template::util::file::get_property tmp_filename $upload_file]
+            set filename [template::util::file::get_property filename $upload_file]
 	    
-	    file copy $tmp_filename ${source_dir}/$filename	    
-	    if {$zip_p eq "t"} {
-		exec unzip -d ${source_dir} ${source_dir}/$filename
-		file delete -force ${source_dir}/$filename
-	    }
-	}
+            file copy $tmp_filename ${source_dir}/$filename	    
+            if {$zip_p eq "t"} {
+                exec unzip -d ${source_dir} ${source_dir}/$filename
+                file delete -force ${source_dir}/$filename
+            }
+        }
 
         # Write Audit Trail
         im_project_audit -project_id $project_id  -type_id $project_type_id -status_id $project_status_id -action after_create
@@ -491,6 +512,14 @@ ad_form -extend -name $form_id -new_request {
         
     }
 
+    if {[apm_package_installed_p "intranet-freelance"]} {
+        # Append the skills attributes
+        im_freelance_store_skills_from_form \
+            -object_subtype_id $project_type_id \
+            -form_id $form_id \
+            -object_id $project_id 
+    }
+     
 } -after_submit {
     set return_url [export_vars -base "new-2" {project_id}]
         
