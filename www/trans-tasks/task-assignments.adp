@@ -14,8 +14,9 @@
 <%=[lang::message::lookup "" intranet-translation.No_tasks_found "No tasks found"]%>
 </else>
 
-<p>
-
+<p>  
+@price_html;noquote@
+<p>    
 @ass_html;noquote@
 
 

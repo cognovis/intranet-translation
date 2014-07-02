@@ -41,6 +41,11 @@ set project_nr [db_string project_nr "select project_nr from im_projects where p
 set page_title "$project_nr - [_ intranet-translation.lt_Translation_Assignmen]"
 set context_bar [im_context_bar [list /intranet/projects/ "[_ intranet-translation.Projects]"] [list "/intranet/projects/view?project_id=$project_id" "[_ intranet-translation.One_project]"] $page_title]
 
+if {[apm_package_installed_p "intranet-freelance"]} {
+    set subject_area_id [db_string subject "select skill_id from im_object_freelance_skill_map where skill_type_id = 2014 and object_id = :project_id limit 1" -default ""]
+} else { 
+    set subject_area_id [db_string subject "select subject_area_id from im_projects where project_id = :project_id" -default ""]
+}
 
 set auto_assignment_component_p [parameter::get_from_package_key -package_key intranet-translation -parameter "EnableAutoAssignmentComponentP" -default 0]
 
@@ -219,6 +224,14 @@ set ctr 0
 
 set task_list [array names tasks_id]
 
+# Prepare the list of assignees for each task for later processing
+
+set trans_assignee_ids [list]
+set edit_assignee_ids [list]
+set proof_assignee_ids [list]
+set other_assignee_ids [list]
+set uom_ids [list]
+
 db_foreach select_tasks $task_sql {
     #    ns_log Notice "task_id=$task_id, status_id=$task_status_id"
 
@@ -239,11 +252,14 @@ db_foreach select_tasks $task_sql {
     # 327 T-Line
     #
     if {320 == $task_uom_id || 323 == $task_uom_id || 324 == $task_uom_id || 325 == $task_uom_id || 326 == $task_uom_id || 327 == $task_uom_id } {
-	set auto_assignable_task 1
+        set auto_assignable_task 1
     } else {
-	set auto_assignable_task 0
+        set auto_assignable_task 0
     }
 
+    # Add the list uom we have in this assignment
+    if {[lsearch $uom_ids $task_uom]<0} {lappend uom_ids $task_uom}
+    
     # Determine the fields necessary for each task type
     set trans 0
     set edit 0
@@ -252,24 +268,24 @@ db_foreach select_tasks $task_sql {
     set wf_list [db_string wf_list "select aux_string1 from im_categories where category_id = :task_type_id"]
     if {"" == $wf_list} { set wf_list "other" }
     foreach wf $wf_list {
-	switch $wf {
-	    trans { 
-		set trans 1 
-		incr n_trans
-	    }
-	    edit { 
-		set edit 1 
-		incr n_edit
-	    }
-	    proof { 
-		set proof 1 
-		incr n_proof
-	    }
-	    other { 
-		set other 1 
-		incr n_other
-	    }
-	}
+        switch $wf {
+	        trans { 
+                set trans 1 
+                incr n_trans
+            }
+            edit { 
+                set edit 1 
+                incr n_edit
+            }
+            proof { 
+                set proof 1 
+                incr n_proof
+            }
+            other { 
+                set other 1 
+                incr n_other
+            }
+        }
     }
 
     # introduce spaces after "/" (by "/ ") to allow for graceful rendering
@@ -291,75 +307,175 @@ db_foreach select_tasks $task_sql {
     # Auto-Assign the task/role if the translator_id is NULL (""),
     # and if there are words left to assign
     if {$auto_assignable_task && $trans_id == "" && $trans_auto_id > 0 && $trans && $auto_assigned_words > $task_units} {
-	set trans_id $trans_auto_id
-	set auto_assigned_words [expr $auto_assigned_words - $task_units]
+        set trans_id $trans_auto_id
+        set auto_assigned_words [expr $auto_assigned_words - $task_units]
     }
 
     if {$auto_assignable_task && $edit_id == "" && $edit_auto_id > 0 && $edit && $auto_assigned_words > $task_units} {
-	set edit_id $edit_auto_id
-	set auto_assigned_words [expr $auto_assigned_words - $task_units]
+        set edit_id $edit_auto_id
+        set auto_assigned_words [expr $auto_assigned_words - $task_units]
     }
 
     if {$auto_assignable_task && $proof_id == "" && $proof_auto_id > 0 && $proof && $auto_assigned_words > $task_units} {
-	set proof_id $proof_auto_id
-	set auto_assigned_words [expr $auto_assigned_words - $task_units]
+        set proof_id $proof_auto_id
+        set auto_assigned_words [expr $auto_assigned_words - $task_units]
     }
 
     if {$auto_assignable_task && $other_id == "" && $other_auto_id > 0 && $other && $auto_assigned_words > $task_units} {
-	set other_id $other_auto_id
-	set auto_assigned_words [expr $auto_assigned_words - $task_units]
+        set other_id $other_auto_id
+        set auto_assigned_words [expr $auto_assigned_words - $task_units]
     }
 
     # Render the 4 possible workflow roles to assign
-    if {$trans} {
-	append task_html [im_task_user_select -source_language_id $source_language_id -target_language_id $target_language_id task_trans.$task_id $project_resource_list $trans_id translator]
-	if {$trans_end_date eq ""} {
-	    set trans_end_date $end_date
-	}
-	append task_html "<br><input type=text size=25 maxlength=25 name=trans_end.$task_id value=\"$trans_end_date\">"
-    } else {
-	append task_html "<input type=hidden name='task_trans.$task_id' value=''><input type=hidden name='trans_end.$task_id' value=''>"
+    
+    foreach type [list trans edit proof other] {
+        set ${type}_html ""
+        if {[set $type]} {
+            append ${type}_html [im_task_user_select -source_language_id $source_language_id -target_language_id $target_language_id task_${type}.$task_id $project_resource_list [set ${type}_id] translator]
+            if {[set ${type}_end_date] eq ""} {
+                set ${type}_end_date $end_date
+            }
+            append ${type}_html "<br><input type=text size=25 maxlength=25 name=${type}_end.$task_id value=\"[set ${type}_end_date]\">"
+
+            set assignee_id [set ${type}_id]
+            if { $assignee_id ne ""} {
+                lappend ${type}_assignee_ids $assignee_id
+                set ${type}_langs($assignee_id) "${source_language_id}-${target_language_id}"
+                
+                if {[info exists ${type}-${task_uom}($assignee_id)]} {
+                    set ${type}-${task_uom}($assignee_id) [expr $task_units + [set ${type}-${task_uom}($assignee_id)]]
+                } else {
+                    set ${type}-${task_uom}($assignee_id) $task_units
+                }
+            }
+        } else {
+            append ${type}_html "<input type=hidden name='task_${type}.$task_id' value=''><input type=hidden name='${type}_end.$task_id' value=''>"
+        }
     }
     
-    append task_html "</td><td>"
-
-    if {$edit} {
-	append task_html [im_task_user_select -source_language_id $source_language_id -target_language_id $target_language_id task_edit.$task_id $project_resource_list $edit_id editor]
-	if {$edit_end_date eq ""} {
-	    set edit_end_date $end_date
-	}
-	append task_html "<br><input type=text size=25 maxlength=25 name=edit_end.$task_id value=\"$edit_end_date\">"
-    } else {
-	append task_html "<input type=hidden name='task_edit.$task_id' value=''><input type=hidden name='edit_end.$task_id' value=''>"
-    }
-
-    append task_html "</td><td>"
-
-    if {$proof} {
-	append task_html [im_task_user_select -source_language_id $source_language_id -target_language_id $target_language_id task_proof.$task_id $project_resource_list $proof_id proofer]
-	if {$proof_end_date eq ""} {
-	    set proof_end_date $end_date
-	}
-	append task_html "<br><input type=text size=25 maxlength=25 name=proof_end.$task_id value=\"$proof_end_date\">"
-    } else {
-	append task_html "<input type=hidden name='task_proof.$task_id' value=''><input type=hidden name='proof_end.$task_id' value=''>"
-    }
-
-    append task_html "</td><td>"
-
-    if {$other} {
-	append task_html [im_task_user_select task_other.$task_id $project_resource_list $other_id]
-	if {$other_end_date eq ""} {
-	    set other_end_date $end_date
-	}
-	append task_html "<br><input type=text size=25 maxlength=25 name=other_end.$task_id value=\"$other_end_date\">"
-    } else {
-	append task_html "<input type=hidden name='task_other.$task_id' value=''><input type=hidden name='other_end.$task_id' value=''>"
-    }
-
-    append task_html "</td></tr>"
+    append task_html "$trans_html</td><td>$edit_html</td><td>$proof_html</td><td>$other_html</td></tr>"
     
     incr ctr    
+}
+
+set freelancer_ids [list]
+set assignee_ids [concat $trans_assignee_ids $edit_assignee_ids $proof_assignee_ids $other_assignee_ids]
+
+# Find out the list of freelancers in the assignments
+foreach freelancer_id [lsort -unique $assignee_ids] {
+    if {![im_user_is_employee_p $freelancer_id] && "" != $freelancer_id} {
+        lappend freelancer_ids $freelancer_id
+    }
+}
+
+
+set price_html ""
+if {[llength freelancer_ids]>0 && [apm_package_installed_p "intranet-freelance-invoices"]} {
+    # Get the prices for all freelancers
+    
+    
+    # Add the form for the freelancer prices
+    
+    set price_html "
+    <form method=POST action='/intranet-freelance-invoices/create-purchase-orders'>
+    [export_form_vars project_id return_url]
+    	<table border=0>
+    	  <tr>
+    	    <td colspan=9 class=rowtitle align=center>
+    	      [_ intranet-freelance-invoices.CreatePurchaseOrders]
+    	    </td>
+    	  </tr>
+    	  <tr>
+    	    <td class=rowtitle align=center>[_ intranet-core.Assignee]</td>
+    	    <td class=rowtitle align=center colspan=2>[_ intranet-translation.Trans]</td>
+    	    <td class=rowtitle align=center colspan=2>[_ intranet-translation.Edit]</td>
+    	    <td class=rowtitle align=center colspan=2>[_ intranet-translation.Proof]</td>
+    	    <td class=rowtitle align=center colspan=2>[_ intranet-translation.Other]</td>
+    	  </tr>
+    "
+
+    foreach freelancer_id $freelancer_ids {
+        append price_html "
+            <tr>
+    	    <td>[im_name_from_user_id $freelancer_id]</td>
+        "
+        
+        # Check for each of the assignments
+        set freelance_company_id [db_string company "select company_id from acs_rels, im_companies where company_id = object_id_one and object_id_two = :freelancer_id" -default [im_company_freelance]]
+        
+        foreach type [list trans edit proof other] {
+            
+            # We try to find the correct trans type id. If we have prices maintained though for Trans as well as Trans / Edit, we will most likely not get the proper result, especially not if we have two different Project Types which have 
+            # Trans on it's own but are referrenced for the same company.
+            set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 like '%${type}%' and category_type = 'Intranet Project Type' limit 1" -default ""]
+            
+            if {$task_type_id eq ""} {
+                set freelance_company_id [im_company_freelance]
+                set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 like '%${type}%' and category_type = 'Intranet Project Type' limit 1" -default ""]
+            }
+            if {$task_type_id eq ""} {
+                set price ""
+            } else {
+                if {[info exists ${type}_langs($freelancer_id)]} {
+                    set langs [split [set ${type}_langs($freelancer_id)] "-"]
+                    set source_langauge_id [lindex $langs 0]
+                    set target_langauge_id [lindex $langs 1]
+                } else {
+                    set source_langauge_id ""
+                    set target_language_id ""
+                }
+                db_1row relevant_price "
+        		select 
+        			im_trans_prices_calc_relevancy (
+        				p.company_id, :freelance_company_id,
+        				p.task_type_id, :task_type_id,
+        				p.subject_area_id, :subject_area_id,
+        				p.target_language_id, :target_language_id,
+        				p.source_language_id, :source_language_id
+        			) as relevancy,
+        			p.price
+        		from im_trans_prices p
+                where company_id = :freelance_company_id
+                order by relevancy desc
+                limit 1
+                "
+                ds_comment "$freelance_company_id :: $price :: $relevancy"
+            }
+            
+            if {[lsearch [set ${type}_assignee_ids] $freelancer_id]>-1} {
+                set ${type}_uom_ids($freelancer_id) [list]
+                foreach uom_id $uom_ids {
+                     # Find out of the assignee is assigned to multiple Units of measure
+                     if {[info exists ${type}-${uom_id}($freelancer_id)]} {
+                         lappend ${type}_uom_ids($freelancer_id) $uom_id
+                     }
+                }
+
+                switch [llength [set ${type}_uom_ids($freelancer_id)]] {
+                    0 {
+                        append price_html "<td colspan=2>&nbsp;</td>"                    
+                    }
+                    1 {
+                        set uom_id [set ${type}_uom_ids($freelancer_id)]
+                        set units [set ${type}-${uom_id}($freelancer_id)]
+
+                        append price_html "
+                            <td align=left>$units [im_category_from_id $uom_id]</td>
+                            <td><input type=text size=5 maxlength=5 name=price_${type}_${uom_id}.$freelancer_id value=\"$price\">
+                        "                                
+                    }
+                    default {
+                        # Ups, we need to show multiple prices.... 
+                        append price_html "<td colspan=2>&nbsp;</td>"                    
+                    }
+                }
+            } else {
+                append price_html "<td colspan=2>&nbsp;</td>"                                
+            }
+        }
+        append price_html "</tr>"        
+    }
+    append price_html "</table></form>"    
 }
 
 append task_html "
@@ -496,7 +612,7 @@ db_foreach wf_assignment $wf_assignments_render_sql {
 
     # Render a new header line for evey type of Workflow
     if {$last_workflow_key != $workflow_key} {
-	append ass_html "
+        append ass_html "
 	<tr>
 	<td class=rowtitle align=center>[_ intranet-translation.Task_Name]</td>
 	<td class=rowtitle align=center>[_ intranet-translation.Target_Lang]</td>
