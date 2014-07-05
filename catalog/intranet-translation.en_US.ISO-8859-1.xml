@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
-<message_catalog package_key="intranet-translation" package_version="3.4.0.7.0" locale="en_US" charset="ISO-8859-1">
+<message_catalog package_key="intranet-translation" locale="en_US" charset="ISO-8859-1">
 
   <msg key="--_Please_Select_--">-- Please Select --</msg>
   <msg key="0_">0%</msg>
@@ -133,8 +133,10 @@ system meanwhile.)</msg>
   <msg key="lt_Your_file_trados_word">Your file '%trados_wordcount_file%' has not been created with one of the supported Trados versions (3.x, 5.0, 5.5, 6.0 and 6.5).</msg>
   <msg key="lt_Your_file_upload_file">Your file: %upload_file%</msg>
   <msg key="lt_Your_have_successfull">You have successfully uploaded %filesize% bytes of file '%task_name%'.</msg>
+  <msg key="Mass_Assignment">Mass Assignment</msg>
   <msg key="Message">Message</msg>
   <msg key="Name">Name</msg>
+  <msg key="No_Change">No Change</msg>
   <msg key="No_Match">No Match</msg>
   <msg key="No_tasks_found">No tasks found</msg>
   <msg key="No_translator_comments_in_this_project">No translator comments in this project</msg>
@@ -160,12 +162,14 @@ Project: %project_name%
   <msg key="Provider">Provider</msg>
   <msg key="Provider_1">Provider:</msg>
   <msg key="Quality_Level">Quality Level</msg>
+  <msg key="Remove_Assignment">Remove Assignment</msg>
   <msg key="Rep">Rep</msg>
   <msg key="Repetitions">Repetitions</msg>
   <msg key="Report">Report</msg>
   <msg key="Save">Save</msg>
   <msg key="Size">Size</msg>
   <msg key="Source">Source</msg>
+  <msg key="Source_Langauge">Source_Langauge</msg>
   <msg key="Source_Language">Source Language</msg>
   <msg key="Status">Status</msg>
   <msg key="Subject_Area">Subject Area</msg>

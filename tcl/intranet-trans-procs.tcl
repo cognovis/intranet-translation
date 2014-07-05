@@ -85,9 +85,9 @@ ad_proc -public im_trans_task_type_select {
 } {
     set trans_type_exists_p [util_memoize [list db_string ttypee "select count(*) from im_categories where category_type = 'Intranet Translation Task Type'"]]
     if {$trans_type_exists_p} {
-	return [im_category_select -translate_p $translate_p -package_key $package_key -locale $locale -include_empty_p $include_empty_p -include_empty_name $include_empty_name "Intranet Translation Task Type" $select_name $default]
+		return [im_category_select -translate_p $translate_p -package_key $package_key -locale $locale -include_empty_p $include_empty_p -include_empty_name $include_empty_name "Intranet Translation Task Type" $select_name $default]
     } else {
-	return [im_category_select -translate_p $translate_p -package_key $package_key -locale $locale -include_empty_p $include_empty_p -include_empty_name $include_empty_name "Intranet Project Type" $select_name $default]
+		return [im_category_select -translate_p $translate_p -package_key $package_key -locale $locale -include_empty_p $include_empty_p -include_empty_name $include_empty_name "Intranet Project Type" $select_name $default]
     }
 }
 
@@ -100,9 +100,9 @@ ad_proc -public im_trans_task_type_options {
 } {
     set trans_type_exists_p [util_memoize [list db_string ttypee "select count(*) from im_categories where category_type = 'Intranet Translation Task Type'"]]
     if {$trans_type_exists_p} {
-	return [db_list_of_lists type "select category, category_id from im_categories where category_type = 'Intranet Trans Task Type'"]
+		return [db_list_of_lists type "select category, category_id from im_categories where category_type = 'Intranet Trans Task Type'"]
     } else {
-	return [db_list_of_lists type "select category, category_id from im_categories where category_type = 'Intranet Project Type'"]
+		return [db_list_of_lists type "select category, category_id from im_categories where category_type = 'Intranet Project Type'"]
     }
 }
 
@@ -185,7 +185,7 @@ where
     if {$user_is_employee_p} { set allow 1}
     if {$download_folder != ""} {set allow 1}
     if {!$allow} {
-	doc_return 403 text/html "[_ intranet-translation.lt_You_are_not_allowed_t_1]"
+		doc_return 403 text/html "[_ intranet-translation.lt_You_are_not_allowed_t_1]"
     }
 
     set alternative_files [list]
@@ -855,6 +855,8 @@ ad_proc im_task_user_select {
     {-source_language_id 0}
     {-target_language_id 0}
     {-group_list {}}
+    -auto_assign:boolean
+	-with_no_change:boolean
     select_name 
     user_list 
     default_user_id 
@@ -863,12 +865,18 @@ ad_proc im_task_user_select {
     Return a formatted HTML drop-down select component with the
     list of members of the current project.
 } {
-    ns_log Debug "default_user_id=$default_user_id"
+	ns_log Debug "default_user_id=$default_user_id"
     set select_html "<select name='$select_name'>\n"
     if {"" == $default_user_id} {
-	append select_html "<option value='' selected>[_ intranet-translation.--_Please_Select_--]</option>\n"
+		if {$with_no_change_p} {
+			# Append a "no_change" value
+			append select_html "<option value='no_change' selected>[_ intranet-translation.No_Change]</option>\n"		
+			append select_html "<option value=''>[_ intranet-translation.Remove_Assignment]</option>\n"
+		} else {	
+			append select_html "<option value='' selected>[_ intranet-translation.--_Please_Select_--]</option>\n"
+		}
     } else {
-	append select_html "<option value=''>[_ intranet-translation.--_Please_Select_--]</option>\n"
+		append select_html "<option value=''>[_ intranet-translation.--_Please_Select_--]</option>\n"
     }
 
     # Check if the filtering option is enabled or not.
@@ -882,11 +890,11 @@ ad_proc im_task_user_select {
     # the source- and target language
     if {0 != $source_language_id} {
         set source_language [im_category_from_id $source_language_id]
-	set source_language_uids [util_memoize [list db_list source_lang_uids "
-		select	user_id
-		from	im_freelance_skills fs,
+		set source_language_uids [util_memoize [list db_list source_lang_uids "
+			select	user_id
+			from 	im_freelance_skills fs,
 			im_categories sl
-		where	fs.skill_id = sl.category_id and
+			where	fs.skill_id = sl.category_id and
 			skill_type_id in (select category_id from im_categories where category = 'Source Language') and
 			-- only compare the first two letter of the source language
 			lower(substring(sl.category from 1 for 2)) = lower(substring('$source_language' from 1 for 2))
@@ -895,44 +903,57 @@ ad_proc im_task_user_select {
 
     if {0 != $target_language_id} {
         set target_language [im_category_from_id $target_language_id]
-	set target_language_uids [util_memoize [list db_list target_lang_uids "
-		select	user_id
-		from	im_freelance_skills fs,
+		set target_language_uids [util_memoize [list db_list target_lang_uids "
+			select	user_id
+			from		im_freelance_skills fs,
 			im_categories sl
-		where	fs.skill_id = sl.category_id and
+			where	fs.skill_id = sl.category_id and
 			skill_type_id in (select category_id from im_categories where category = 'Target Language') and
 			-- only compare the first two letter of the target language
 			lower(substring(sl.category from 1 for 2)) = lower(substring('$target_language' from 1 for 2))
-	"] 60]
+		"] 60]
     }
+    
 
-
+	set matched_user_ids [list]
     foreach user_list_entry $user_list {
-	set user_id [lindex $user_list_entry 0]
-	set user_name [lindex $user_list_entry 1]
+		set user_id [lindex $user_list_entry 0]
+		set user_name [lindex $user_list_entry 1]
+		
+		if {0 != $source_language_id} {
+	    		if {[lsearch $source_language_uids $user_id] < 0} { continue }
+		}
+		if {0 != $target_language_id} {
+	    		if {[lsearch $target_language_uids $user_id] < 0} { continue }
+		}
 
-	if {0 != $source_language_id} {
-	    if {[lsearch $source_language_uids $user_id] < 0} { continue }
+		lappend matched_user_ids $user_id
+		set username($user_id) $user_name
 	}
-	if {0 != $target_language_id} {
-	    if {[lsearch $target_language_uids $user_id] < 0} { continue }
+	
+	if {[llength $matched_user_ids] == 1} {
+		set user_id [lindex $matched_user_ids 0]
+		set selected ""
+		if {$auto_assign_p || $default_user_id == $user_id} {set selected "selected"}
+		append select_html "<option value='$user_id' $selected>$username($user_id)</option>\n"
+	} else {
+		foreach user_id $matched_user_ids {
+			set selected ""
+			if {$default_user_id == $user_id} { set selected "selected"}
+			append select_html "<option value='$user_id' $selected>$username($user_id)</option>\n"
+		}
 	}
 
-	set selected ""
-	if {$default_user_id == $user_id} { set selected "selected"}
-	append select_html "<option value='$user_id' $selected>$user_name</option>\n"
-    }
-
-    if {[llength $group_list] > 0} {
-	append select_html "<option value=''></option>\n"
-    }
+    	if {[llength $group_list] > 0} {
+		append select_html "<option value=''></option>\n"
+	}
 
     foreach group_list_entry $group_list {
-	set group_id [lindex $group_list_entry 0]
-	set group_name [lindex $group_list_entry 1]
-	set selected ""
-	if {$default_user_id == $group_id} { set selected "selected"}
-	append select_html "<option value='$group_id' $selected>$group_name</option>\n"
+		set group_id [lindex $group_list_entry 0]
+		set group_name [lindex $group_list_entry 1]
+		set selected ""
+		if {$default_user_id == $group_id} { set selected "selected"}
+		append select_html "<option value='$group_id' $selected>$group_name</option>\n"
     }
 
     append select_html "</select>\n"

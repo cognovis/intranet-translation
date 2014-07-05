@@ -48,12 +48,13 @@ if {[apm_package_installed_p "intranet-freelance"]} {
 }
 
 set auto_assignment_component_p [parameter::get_from_package_key -package_key intranet-translation -parameter "EnableAutoAssignmentComponentP" -default 0]
+set mass_assignment_component_p [parameter::get_from_package_key -package_key intranet-translation -parameter "EnableMassAssignmentComponentP" -default 0]
 
 # Deal with the dates
-set trans_end_date ""
-set edit_end_date ""
-set proof_end_date ""
-set other_end_date ""
+foreach type [list trans edit proof other] {
+	set ${type}_end_date ""
+	set ${type}_end_dates [list]
+}
 
 if {"" == $return_url} { set return_url [im_url_with_query] }
 
@@ -231,6 +232,11 @@ set edit_assignee_ids [list]
 set proof_assignee_ids [list]
 set other_assignee_ids [list]
 set uom_ids [list]
+set target_language_ids [list]
+
+# Keep a list of unique task_names, so we can select the task_names for mass assignment
+# Sadly we have tasks for each language combination already in the system ....
+set task_names [list]
 
 db_foreach select_tasks $task_sql {
     #    ns_log Notice "task_id=$task_id, status_id=$task_status_id"
@@ -259,7 +265,7 @@ db_foreach select_tasks $task_sql {
 
     # Add the list uom we have in this assignment
     if {[lsearch $uom_ids $task_uom]<0} {lappend uom_ids $task_uom}
-    
+    if {[lsearch $target_language_ids $target_language_id]<0} {lappend target_language_ids $target_language_id}
     # Determine the fields necessary for each task type
     set trans 0
     set edit 0
@@ -328,14 +334,17 @@ db_foreach select_tasks $task_sql {
 
     # Render the 4 possible workflow roles to assign
     
+	set orig_source_language_id $source_language_id
     foreach type [list trans edit proof other] {
         set ${type}_html ""
         if {[set $type]} {
             append ${type}_html [im_task_user_select -source_language_id $source_language_id -target_language_id $target_language_id task_${type}.$task_id $project_resource_list [set ${type}_id] translator]
-            if {[set ${type}_end_date] eq ""} {
-                set ${type}_end_date $end_date
-            }
-            append ${type}_html "<br><input type=text size=25 maxlength=25 name=${type}_end.$task_id value=\"[set ${type}_end_date]\">"
+            set this_end_date [set ${type}_end_date]
+            if { $this_end_date eq ""} {
+                set this_end_date $end_date
+            } 
+            
+            append ${type}_html "<br><input type=text size=25 maxlength=25 name=${type}_end.$task_id value=\"$this_end_date\">"
 
             set assignee_id [set ${type}_id]
             if { $assignee_id ne ""} {
@@ -351,6 +360,11 @@ db_foreach select_tasks $task_sql {
         } else {
             append ${type}_html "<input type=hidden name='task_${type}.$task_id' value=''><input type=hidden name='${type}_end.$task_id' value=''>"
         }
+        
+        # Append the end date to the list so we can prefill for the mass selection
+        if {$this_end_date ne ""} {
+	        lappend ${type}_end_dates $this_end_date
+	    }
     }
     
     append task_html "$trans_html</td><td>$edit_html</td><td>$proof_html</td><td>$other_html</td></tr>"
@@ -418,10 +432,10 @@ if {[llength freelancer_ids]>0 && [apm_package_installed_p "intranet-freelance-i
             } else {
                 if {[info exists ${type}_langs($freelancer_id)]} {
                     set langs [split [set ${type}_langs($freelancer_id)] "-"]
-                    set source_langauge_id [lindex $langs 0]
-                    set target_langauge_id [lindex $langs 1]
+                    set source_language_id [lindex $langs 0]
+                    set target_language_id [lindex $langs 1]
                 } else {
-                    set source_langauge_id ""
+                    set source_language_id ""
                     set target_language_id ""
                 }
                 db_1row relevant_price "
@@ -675,7 +689,7 @@ if {0 == $ctr} { set ass_html "" }
 
 
 # -------------------------------------------------------------------
-# Auto_Assign HTML Component
+# Auto_Assign HTML Component old version
 # -------------------------------------------------------------------
 
 set auto_assignment_html_body ""
@@ -727,6 +741,83 @@ set auto_assignment_html "
 if {"" == $task_html} { set auto_assignment_html "" }
 
 # -------------------------------------------------------------------
+# Mass_Assign HTML Component
+# -------------------------------------------------------------------
+
+set mass_assignment_html_body ""
+set mass_assignment_html_header ""
+
+append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Target_Lang]</td>\n"
+if {$n_trans>0} {
+    append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Trans]</td>\n"
+}
+if {$n_edit>0} {
+    append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Edit]</td>\n"
+}
+if {$n_proof>0} {
+    append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Proof]</td>\n"
+}
+if {$n_other>0} {
+    append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Other]</td>\n"
+}
+
+foreach target_language_id $target_language_ids {
+    append mass_assignment_html_body "<tr><td>[im_category_from_id $target_language_id]</td>\n"
+    foreach type {trans edit proof other} {
+        if { [set n_${type}] > 0 } {
+            append mass_assignment_html_body "<td>[im_task_user_select -source_language_id $orig_source_language_id -target_language_id $target_language_id -with_no_change ${type}_mass.$target_language_id $project_resource_list "" translator]</td>\n"
+        } else {
+	        append mass_assignment_html_body "<input type=hidden name=${type}_mass.$target_language_id value=''>"
+        }
+    }
+     append mass_assignment_html_body "</tr>"
+} 
+
+# Now add a line for the end date
+append mass_assignment_html_body "<tr><td>[_ intranet-core.End_Date]</td>\n"
+foreach type {trans edit proof other} {
+	if { [set n_${type}] > 0 } {
+		set end_date [lindex [lsort -unique [set ${type}_end_dates]] 0]
+			
+		# Use ad_form templating for consistent looks
+
+		# if {[regexp {^(\d{4})\-(\d{2})\-(\d{2}) (\d{2}):(\d{2}):(\d{2})\+(\d{2})$} $end_date match year moy dom hod moh som tz]} { set end_date [list $year $moy $dom $hod $moh $som $tz] }
+		# set element(name) ${type}_end_date
+		# set element(value) $end_date
+		# set element(mode) "edit"
+		# append mass_assignment_html_body "<td>[template::widget::timestamp element ""]</td>"
+		append mass_assignment_html_body "<td><input type=text size=25 maxlength=25 name=${type}_end_date value=\"$end_date\"></td>"	
+	} else {
+		append mass_assignment_html_body "<input type=hidden name=${type}_end_date value=''>"
+	}
+}
+append mass_assignment_html_body "</tr>"
+
+
+set mass_assignment_html "
+<form action=\"task-assignments-mass\" method=POST>
+[export_form_vars project_id target_language_ids return_url orderby]
+<table>
+<tr>
+  <td colspan=5 class=rowtitle align=center>[_ intranet-translation.Mass_Assignment]</td>
+</tr>
+<tr align=center>
+  $mass_assignment_html_header
+</tr>
+  $mass_assignment_html_body
+<tr>
+  <td align=left colspan=5>
+    <input type=submit name='mass_assigment' value='[_ intranet-translation.Auto_Assign]'>
+  </td>
+</tr>
+</table>
+</form>
+"
+
+# No static tasks - no mass assignment...
+if {"" == $task_html} { set mass_assignment_html "" }
+
+# -------------------------------------------------------------------
 # Project Subnavbar
 # -------------------------------------------------------------------
 
@@ -739,3 +830,4 @@ set sub_navbar [im_sub_navbar \
     -base_url "/intranet/projects/view?project_id=$project_id" \
     $parent_menu_id \
     $bind_vars "" "pagedesriptionbar" "project_trans_tasks_assignments"] 
+

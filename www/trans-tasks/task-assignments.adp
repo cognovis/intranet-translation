@@ -4,18 +4,21 @@
 <property name="sub_navbar">@sub_navbar;noquote@</property>
 
 <if @auto_assignment_component_p@>
-@auto_assignment_html;noquote@
+	@auto_assignment_html;noquote@
+</if>
+<if @mass_assignment_component_p@>
+	@mass_assignment_html;noquote@
 </if>
 
 <if @task_html@ ne "">
-@task_html;noquote@
+	@task_html;noquote@
 </if>
 <else>
-<%=[lang::message::lookup "" intranet-translation.No_tasks_found "No tasks found"]%>
+	<%=[lang::message::lookup "" intranet-translation.No_tasks_found "No tasks found"]%>
 </else>
 
 <p>  
-@price_html;noquote@
+	@price_html;noquote@
 <p>    
 @ass_html;noquote@
 
