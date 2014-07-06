@@ -273,23 +273,30 @@ db_foreach select_tasks $task_sql {
     set other 0
     set wf_list [db_string wf_list "select aux_string1 from im_categories where category_id = :task_type_id"]
     if {"" == $wf_list} { set wf_list "other" }
+
+	# Set the task types so we know which actions are supposed to be done in this task
+	set task_types($task_id) [list]
     foreach wf $wf_list {
         switch $wf {
 	        trans { 
                 set trans 1 
                 incr n_trans
+                lappend task_types($task_id) "trans"
             }
             edit { 
                 set edit 1 
                 incr n_edit
+				lappend task_types($task_id) "edit"
             }
             proof { 
                 set proof 1 
                 incr n_proof
+                lappend task_types($task_id) "proof"                
             }
             other { 
                 set other 1 
                 incr n_other
+                lappend task_types($task_id) "other"                
             }
         }
     }
@@ -337,6 +344,7 @@ db_foreach select_tasks $task_sql {
 	set orig_source_language_id $source_language_id
     foreach type [list trans edit proof other] {
         set ${type}_html ""
+        set this_end_date ""
         if {[set $type]} {
             append ${type}_html [im_task_user_select -source_language_id $source_language_id -target_language_id $target_language_id task_${type}.$task_id $project_resource_list [set ${type}_id] translator]
             set this_end_date [set ${type}_end_date]
@@ -793,10 +801,10 @@ foreach type {trans edit proof other} {
 }
 append mass_assignment_html_body "</tr>"
 
-
+set task_type_list [array get task_types]
 set mass_assignment_html "
 <form action=\"task-assignments-mass\" method=POST>
-[export_form_vars project_id target_language_ids return_url orderby]
+[export_form_vars project_id target_language_ids return_url orderby task_type_list]
 <table>
 <tr>
   <td colspan=5 class=rowtitle align=center>[_ intranet-translation.Mass_Assignment]</td>
