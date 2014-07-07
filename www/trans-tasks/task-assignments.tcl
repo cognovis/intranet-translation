@@ -438,7 +438,7 @@ if {[llength freelance_ids]>0} {
         "
         
         # Check for each of the assignments
-        set freelance_company_id [db_string company "select company_id from acs_rels, im_companies where company_id = object_id_one and object_id_two = :freelancer_id" -default [im_company_freelance]]
+        set freelance_company_id [db_string company "select company_id from acs_rels, im_companies where company_id = object_id_one and object_id_two = :freelancer_id limit 1" -default [im_company_freelance]]
         
         foreach type [list trans edit proof other] {
             
