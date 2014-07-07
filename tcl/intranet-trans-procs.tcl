@@ -3418,3 +3418,64 @@ where
     return $missing_file_list
 }
 
+ad_proc -public im_translation_best_rate {
+    -provider_id
+    -task_type_id
+    {-subject_area_id ""}
+    -target_language_id
+    -source_language_id
+    {-currency "EUR"}
+    -task_uom_id
+} {
+    Calculate the best rate for freelancers
+} {
+    set number_format "9999990.099"
+
+    return [db_string best_rate "
+    select 
+        to_char(pr.price, :number_format) as price
+    from
+        (
+            (select 
+                im_trans_prices_calc_relevancy (
+                    p.company_id, :provider_id,
+                    p.task_type_id, :task_type_id,
+                    p.subject_area_id, :subject_area_id,
+                    p.target_language_id, :target_language_id,
+                    p.source_language_id, :source_language_id
+                ) as relevancy,
+                p.price_id,
+                p.price,
+                p.company_id as company_id,
+                p.uom_id,
+                p.task_type_id,
+                p.target_language_id,
+                p.source_language_id,
+                p.subject_area_id,
+                p.valid_from,
+                p.valid_through,
+                p.note as price_note
+            from im_trans_prices p
+            where
+                uom_id=:task_uom_id
+                and currency = :currency
+                and p.company_id not in (
+                    select company_id
+                    from im_companies
+                    where company_path = 'internal'
+                )
+
+            )
+        ) pr
+          LEFT JOIN
+        im_companies c ON pr.company_id = c.company_id
+    where
+            relevancy >= 0
+    order by
+        pr.relevancy desc,
+        pr.company_id,
+        pr.uom_id
+    limit 1
+    "]
+}
+
