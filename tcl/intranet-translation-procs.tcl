@@ -219,7 +219,6 @@ ad_proc -public im_translation_create_purchase_orders {
        set material_id [im_material_create_from_parameters -material_uom_id $task_uom_id -material_type_id [im_material_type_translation]]
 
         set po_created_p [db_string po_created "select i.invoice_id from im_invoice_items ii, im_invoices i where task_id = :task_id and company_contact_id = :freelance_id and item_material_id = :material_id limit 1" -default 0]
-                ds_comment "material:: $material_id  [db_string material "select material_name from im_materials where material_id = :material_id"] ::$po_created_p $task_id"
 
         if {!$po_created_p} {
             lappend po_task_ids($freelance_id) $task_id
@@ -323,9 +322,17 @@ ad_proc -public im_translation_create_purchase_orders {
                             where   tt.task_id = :task_id"
                 }
             }
-            set billable_units_task(${task_id}_${freelance_id}) $po_billable_units
-            set uom(${task_id}_${freelance_id}) $po_task_uom_id
-            set task_type(${task_id}_${freelance_id}) $po_task_type_id
+            if {[info exists task_types(${task_id}_${freelance_id})]} {
+                lappend task_types(${task_id}_${freelance_id}) $po_task_type_id
+            } else {
+                set task_types(${task_id}_${freelance_id}) [list $po_task_type_id]
+            }
+            
+            
+            set create_line_item(${task_id}_${po_task_type_id}_${freelance_id}) 1
+            set billable_units_task(${task_id}_${po_task_type_id}_${freelance_id}) $po_billable_units
+            set uom(${task_id}_${po_task_type_id}_${freelance_id}) $po_task_uom_id
+
             set subject_area($task_id) $subject_area_id
             set source_language_task($task_id) $source_language_id
             set target_language_task($task_id) $target_language_id
@@ -351,10 +358,10 @@ ad_proc -public im_translation_create_purchase_orders {
                 default {set task_date_pretty [lc_time_fmt $end_date "%x %X" $locale]}
             }
 
-            set task_title(${task_id}_${freelance_id}) "$po_task_type: $task_name ($source_language -> $target_language) Deadline: \"$task_date_pretty CET\""
+            set task_title(${task_id}_${po_task_type_id}_${freelance_id}) "$po_task_type: $task_name ($source_language -> $target_language) Deadline: \"$task_date_pretty CET\""
 
             # Maybe we need the end date in the purchase order later
-            set task_end_date(${task_id}_${freelance_id}) $end_date
+            set task_end_date(${task_id}_${po_task_type_id}_${freelance_id}) $end_date
 
         }
     }
@@ -491,58 +498,63 @@ ad_proc -public im_translation_create_purchase_orders {
             set sort_order 0
             set delivery_date ""
                         
-            foreach task_id $po_task_ids($freelance_id) {
-                set task_type_id  $task_type(${task_id}_${freelance_id})
-                set source_language_id $source_language_task($task_id)
-                set target_language_id $target_language_task($task_id)
-                set task_uom_id $uom(${task_id}_${freelance_id})
-                set item_units $billable_units_task(${task_id}_${freelance_id})
-                set item_name $task_title(${task_id}_${freelance_id})
+            foreach task_id [lsort -unique $po_task_ids($freelance_id)] {
+                foreach task_type_id $task_types(${task_id}_${freelance_id}) {
+                    # We need to create the line items for all task_types and tasks
+                    # But only if we really need to create it.....
+                    if {[info exists create_line_item(${task_id}_${task_type_id}_${freelance_id})]} {
+                        ds_comment "create_line_item(${task_id}_${task_type_id}_${freelance_id}) :: $create_line_item(${task_id}_${task_type_id}_${freelance_id})"
+                        set source_language_id $source_language_task($task_id)
+                        set target_language_id $target_language_task($task_id)
+                        set task_uom_id $uom(${task_id}_${task_type_id}_${freelance_id})
+                        set item_units $billable_units_task(${task_id}_${task_type_id}_${freelance_id})
+                        set item_name $task_title(${task_id}_${task_type_id}_${freelance_id})
+        
+                        if {[info exists rates(${task_type_id}_${task_uom_id}_${freelance_id})]} {
+                            set rate $rates(${task_type_id}_${task_uom_id}_${freelance_id})                    
+                        } else {
+                            # Get the price from the database
+                            set rate [im_translation_best_rate -provider_id $provider_id -task_type_id $task_type_id -subject_area_id $subject_area($task_id) -target_language_id $target_language_id -source_language_id $source_language_id -task_uom_id $task_uom_id -currency $currency]
+                        }
     
-                if {[info exists rates(${task_type_id}_${task_uom_id}_${freelance_id})]} {
-                    set rate $rates(${task_type_id}_${task_uom_id}_${freelance_id})                    
-                } else {
-                    # Get the price from the database
-                    set rate [im_translation_best_rate -provider_id $provider_id -task_type_id $task_type_id -subject_area_id $subject_area($task_id) -target_language_id $target_language_id -source_language_id $source_language_id -task_uom_id $task_uom_id -currency $currency]
+                        set file_type_id ""
+                        set material_id [im_material_create_from_parameters -material_uom_id $task_uom_id -material_type_id [im_material_type_translation]]
+        
+                        # Deal with the end date
+                        # Make the last end date the delivery date for the purchase order
+                        if {$delivery_date < $task_end_date(${task_id}_${task_type_id}_${freelance_id})} {set delivery_date $task_end_date(${task_id}_${task_type_id}_${freelance_id})}
+                        incr sort_order
+    
+                        if {!(0 == $item_units || "" == $item_units)} {
+                            set item_id [db_nextval "im_invoice_items_seq"]
+                            set source_invoice_id -1
+                            set insert_invoice_items_sql "
+                                    INSERT INTO im_invoice_items (
+                                            item_id, item_name,
+                                            project_id, invoice_id,
+                                            item_units, item_uom_id,
+                                            price_per_unit, currency,
+                                            sort_order, item_type_id,
+                                            item_material_id,
+                                            item_status_id, description, task_id,
+                                            item_source_invoice_id
+                                    ) VALUES (
+                                            :item_id, :item_name,
+                                            :project_id, :invoice_id,
+                                            :item_units, :task_uom_id,
+                                            :rate, :currency,
+                                            :sort_order, :task_type_id,
+                                            :material_id,
+                                            null, '', :task_id,
+                                            null
+                                )" 
+    
+    
+                            db_dml insert_invoice_items $insert_invoice_items_sql
+                        }
+                    }
                 }
-
-                set file_type_id ""
-                set material_id [im_material_create_from_parameters -material_uom_id $task_uom_id -material_type_id [im_material_type_translation]]
-
-                ds_comment "material:: $material_id  [db_string material "select material_name from im_materials where material_id = :material_id"]"
-
-                # Deal with the end date
-                # Make the last end date the delivery date for the purchase order
-                if {$delivery_date < $task_end_date(${task_id}_${freelance_id})} {set delivery_date $task_end_date(${task_id}_${freelance_id})}
-                incr sort_order
-
-                if {!(0 == $item_units || "" == $item_units)} {
-                    set item_id [db_nextval "im_invoice_items_seq"]
-                    set source_invoice_id -1
-                    set insert_invoice_items_sql "
-                                INSERT INTO im_invoice_items (
-                                        item_id, item_name,
-                                        project_id, invoice_id,
-                                        item_units, item_uom_id,
-                                        price_per_unit, currency,
-                                        sort_order, item_type_id,
-                                        item_material_id,
-                                        item_status_id, description, task_id,
-                                        item_source_invoice_id
-                                ) VALUES (
-                                        :item_id, :item_name,
-                                        :project_id, :invoice_id,
-                                        :item_units, :task_uom_id,
-                                        :rate, :currency,
-                                        :sort_order, :task_type_id,
-                                        :material_id,
-                                        null, '', :task_id,
-                                        null
-                            )" 
-
-
-                    db_dml insert_invoice_items $insert_invoice_items_sql
-                }
+            
             }
 
             # Recalculate and update the invoice amount

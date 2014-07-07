@@ -365,9 +365,8 @@ db_foreach select_tasks $task_sql {
                 
                 set po_created_p [db_0or1row po_created "select i.invoice_id,i.invoice_nr, price_per_unit, company_contact_id, currency from im_invoice_items ii, im_invoices i, im_trans_tasks t where i.invoice_id = ii.invoice_id and t.task_id = :task_id and item_material_id = :material_id and t.task_id = ii.task_id and company_contact_id = :${type}_id limit 1"]
                 
-                ds_comment "$material_id :: [im_name_from_user_id $company_contact_id]  :: $invoice_nr :: $task_id"
                 if {$po_created_p} {
-                    set invoice_url [export_vars -base "/intranet-invoices/view" -url {invoice_id}]
+                    set invoice_url [export_vars -base "/intranet-invoices/view" -url {invoice_id return_url}]
                     append ${type}_html "<p/><center><a href='$invoice_url'>$invoice_nr</a>: ($price_per_unit $currency)</center><p/>"
                 }
                 
