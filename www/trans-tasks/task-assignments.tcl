@@ -264,7 +264,7 @@ db_foreach select_tasks $task_sql {
     }
 
     # Add the list uom we have in this assignment
-    if {[lsearch $uom_ids $task_uom]<0} {lappend uom_ids $task_uom}
+    if {[lsearch $uom_ids $task_uom_id]<0} {lappend uom_ids $task_uom_id}
     if {[lsearch $target_language_ids $target_language_id]<0} {lappend target_language_ids $target_language_id}
     # Determine the fields necessary for each task type
     set trans 0
@@ -351,18 +351,34 @@ db_foreach select_tasks $task_sql {
             if { $this_end_date eq ""} {
                 set this_end_date $end_date
             } 
-            
-            append ${type}_html "<br><input type=text size=25 maxlength=25 name=${type}_end.$task_id value=\"$this_end_date\">"
 
+            append ${type}_html "<br><input type=text size=25 maxlength=25 name=${type}_end.$task_id value=\"$this_end_date\">"
+            
+            
             set assignee_id [set ${type}_id]
             if { $assignee_id ne ""} {
+                # Get the material to identify the correct invoices
+                # The material needs to be for the actual type of work, not for the whole task type
+                set file_type_id ""
+                set task_type_id [im_project_type_${type}] 
+                set material_id [im_material_create_from_parameters -material_uom_id $task_uom_id -material_type_id [im_material_type_translation]]
+                
+                set po_created_p [db_0or1row po_created "select i.invoice_id,i.invoice_nr, price_per_unit, company_contact_id, currency from im_invoice_items ii, im_invoices i, im_trans_tasks t where i.invoice_id = ii.invoice_id and t.task_id = :task_id and item_material_id = :material_id and t.task_id = ii.task_id and company_contact_id = :${type}_id limit 1"]
+                
+                ds_comment "$material_id :: [im_name_from_user_id $company_contact_id]  :: $invoice_nr :: $task_id"
+                if {$po_created_p} {
+                    set invoice_url [export_vars -base "/intranet-invoices/view" -url {invoice_id}]
+                    append ${type}_html "<p/><center><a href='$invoice_url'>$invoice_nr</a>: ($price_per_unit $currency)</center><p/>"
+                }
+                
                 lappend ${type}_assignee_ids $assignee_id
                 set ${type}_langs($assignee_id) "${source_language_id}-${target_language_id}"
                 
-                if {[info exists ${type}-${task_uom}($assignee_id)]} {
-                    set ${type}-${task_uom}($assignee_id) [expr $task_units + [set ${type}-${task_uom}($assignee_id)]]
+                # Get the number of units for the type / UOM combination
+                if {[info exists ${type}-${task_uom_id}($assignee_id)]} {
+                    set ${type}-${task_uom_id}($assignee_id) [expr $task_units + [set ${type}-${task_uom_id}($assignee_id)]]
                 } else {
-                    set ${type}-${task_uom}($assignee_id) $task_units
+                    set ${type}-${task_uom_id}($assignee_id) $task_units
                 }
             }
         } else {
@@ -380,31 +396,31 @@ db_foreach select_tasks $task_sql {
     incr ctr    
 }
 
-set freelancer_ids [list]
+set freelance_ids [list]
 set assignee_ids [concat $trans_assignee_ids $edit_assignee_ids $proof_assignee_ids $other_assignee_ids]
 
 # Find out the list of freelancers in the assignments
 foreach freelancer_id [lsort -unique $assignee_ids] {
     if {![im_user_is_employee_p $freelancer_id] && "" != $freelancer_id} {
-        lappend freelancer_ids $freelancer_id
+        lappend freelance_ids $freelancer_id
     }
 }
 
 
 set price_html ""
-if {[llength freelancer_ids]>0 && [apm_package_installed_p "intranet-freelance-invoices"]} {
+if {[llength freelance_ids]>0} {
     # Get the prices for all freelancers
     
     
     # Add the form for the freelancer prices
     
     set price_html "
-    <form method=POST action='/intranet-freelance-invoices/create-purchase-orders'>
-    [export_form_vars project_id return_url]
+    <form method=POST action='create-purchase-orders'>
+    [export_form_vars project_id return_url freelance_ids]
     	<table border=0>
     	  <tr>
     	    <td colspan=9 class=rowtitle align=center>
-    	      [_ intranet-freelance-invoices.CreatePurchaseOrders]
+    	      [_ intranet-translation.CreatePurchaseOrders]
     	    </td>
     	  </tr>
     	  <tr>
@@ -416,7 +432,7 @@ if {[llength freelancer_ids]>0 && [apm_package_installed_p "intranet-freelance-i
     	  </tr>
     "
 
-    foreach freelancer_id $freelancer_ids {
+    foreach freelancer_id $freelance_ids {
         append price_html "
             <tr>
     	    <td>[im_name_from_user_id $freelancer_id]</td>
@@ -446,6 +462,7 @@ if {[llength freelancer_ids]>0 && [apm_package_installed_p "intranet-freelance-i
                     set source_language_id ""
                     set target_language_id ""
                 }
+                
                 db_1row relevant_price "
         		select 
         			im_trans_prices_calc_relevancy (
@@ -455,13 +472,12 @@ if {[llength freelancer_ids]>0 && [apm_package_installed_p "intranet-freelance-i
         				p.target_language_id, :target_language_id,
         				p.source_language_id, :source_language_id
         			) as relevancy,
-        			p.price
+                p.price
         		from im_trans_prices p
                 where company_id = :freelance_company_id
                 order by relevancy desc
                 limit 1
                 "
-                ds_comment "$freelance_company_id :: $price :: $relevancy"
             }
             
             if {[lsearch [set ${type}_assignee_ids] $freelancer_id]>-1} {
@@ -475,7 +491,10 @@ if {[llength freelancer_ids]>0 && [apm_package_installed_p "intranet-freelance-i
 
                 switch [llength [set ${type}_uom_ids($freelancer_id)]] {
                     0 {
-                        append price_html "<td colspan=2>&nbsp;</td>"                    
+                        append price_html "<td colspan=2>&nbsp;</td>
+                            <input type=hidden name=${type}_price.$freelancer_id value=''></td>
+                            <input type=hidden name=${type}_uom.$freelancer_id value=''></td>
+                        "                    
                     }
                     1 {
                         set uom_id [set ${type}_uom_ids($freelancer_id)]
@@ -483,21 +502,28 @@ if {[llength freelancer_ids]>0 && [apm_package_installed_p "intranet-freelance-i
 
                         append price_html "
                             <td align=left>$units [im_category_from_id $uom_id]</td>
-                            <td><input type=text size=5 maxlength=5 name=price_${type}_${uom_id}.$freelancer_id value=\"$price\">
+                            <td><input type=text size=8 maxlength=8 name=${type}_price.$freelancer_id value=\"$price\">
+                            <input type=hidden name=${type}_uom.$freelancer_id value='$uom_id'></td>
                         "                                
                     }
                     default {
                         # Ups, we need to show multiple prices.... 
-                        append price_html "<td colspan=2>&nbsp;</td>"                    
+                        append price_html "<td colspan=2>&nbsp;</td>
+                            <input type=hidden name=${type}_price.$freelancer_id value=''></td>
+                            <input type=hidden name=${type}_uom.$freelancer_id value=''></td>
+                        "
                     }
                 }
             } else {
-                append price_html "<td colspan=2>&nbsp;</td>"                                
+                append price_html "<td colspan=2>&nbsp;</td>
+                    <input type=hidden name=${type}_price.$freelancer_id value=''></td>
+                    <input type=hidden name=${type}_uom.$freelancer_id value=''></td>
+                "
             }
         }
         append price_html "</tr>"        
     }
-    append price_html "</table></form>"    
+    append price_html "<tr><td><input type=submit name='create' value='[_ intranet-core.Create]'></td><td colspan=4></td></tr></table></form>"    
 }
 
 append task_html "

@@ -40,6 +40,7 @@
   <msg key="cost_type_status">%cost_type% status</msg>
   <msg key="cost_type_template">%cost_type% template:</msg>
   <msg key="cost_type_type">%cost_type% type</msg>
+  <msg key="CreatePurchaseOrders">Create Purchase Orders</msg>
   <msg key="Database_Error">Database Error</msg>
   <msg key="days">days</msg>
   <msg key="Del">Del</msg>

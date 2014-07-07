@@ -19,8 +19,4 @@
 
 <p>  
 	@price_html;noquote@
-<p>    
-@ass_html;noquote@
-
-
-
+<p>
