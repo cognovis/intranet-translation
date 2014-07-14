@@ -437,16 +437,15 @@ if {[llength freelance_ids]>0} {
     	    <td>[im_name_from_user_id $freelancer_id]</td>
         "
         
-        # Check for each of the assignments
-        set company_status_ids [im_sub_categories [im_company_status_active_or_potential]]
-        set freelance_company_id [db_string company "select company_id from acs_rels, im_companies where company_id = object_id_one and object_id_two = :freelancer_id and company_status_id in ([template::util::tcl_to_sql_list $company_status_ids]) limit 1" -default [im_company_freelance]]
-        
+        # Check for each of the assignments        
         foreach type [list trans edit proof other] {
+            set freelance_company_id [im_translation_freelance_company -freelance_id $freelancer_id]
             
             # We try to find the correct trans type id. If we have prices maintained though for Trans as well as Trans / Edit, we will most likely not get the proper result, especially not if we have two different Project Types which have 
             # Trans on it's own but are referrenced for the same company.
-            set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 like '%${type}%' and category_type = 'Intranet Project Type' limit 1" -default ""]
+            set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 = :type and category_type = 'Intranet Project Type' limit 1" -default ""]
             
+            ds_comment "$freelancer_id :: $freelance_company_id :: $task_type_id"
             if {$task_type_id eq ""} {
                 set freelance_company_id [im_company_freelance]
                 set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 like '%${type}%' and category_type = 'Intranet Project Type' limit 1" -default ""]

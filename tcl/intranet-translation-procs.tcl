@@ -571,3 +571,22 @@ ad_proc -public im_translation_create_purchase_orders {
     return "$created_invoice_ids"
 }
 
+ad_proc -public im_translation_freelance_company {
+    -freelance_id
+} {
+    Get the company for a freelancer
+} {
+    set result [util_memoize [list im_translation_freelance_company_helper -freelance_id $freelance_id] 3600]
+}
+
+ad_proc -public im_translation_freelance_company_helper {
+    -freelance_id
+} {
+    Get the company for a freelancer
+} {
+    set company_status_ids [im_sub_categories [im_company_status_active_or_potential]]
+    return [db_string company "select company_id from acs_rels, im_companies where company_id = object_id_one and object_id_two = :freelance_id and company_status_id in ([template::util::tcl_to_sql_list $company_status_ids]) limit 1" -default [im_company_freelance]]
+}
+
+
+
