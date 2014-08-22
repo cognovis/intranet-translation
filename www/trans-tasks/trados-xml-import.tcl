@@ -392,13 +392,13 @@ for {set i 0} {$i < $trados_files_len} {incr i} {
     # Get the "task_units" from a special company called "default_freelance"
     #
     set task_units [im_trans_trados_matrix_calculate [im_company_freelance] $px_words $prep_words $p100_words $p95_words $p85_words $p75_words $p50_words $p0_words \
-		       $pperfect_words $pcrossfilerepeated_words $f95_words $f85_words $f75_words $f50_words]
+		       $pperfect_words $pcrossfilerepeated_words $f95_words $f85_words $f75_words $f50_words $locked_words]
 
     # Determine the "billable_units" form the project's customer:
     #
     
     set billable_units [im_trans_trados_matrix_calculate $customer_id $px_words $prep_words $p100_words $p95_words $p85_words $p75_words $p50_words $p0_words \
-		       $pperfect_words $pcrossfilerepeated_words $f95_words $f85_words $f75_words $f50_words]
+		       $pperfect_words $pcrossfilerepeated_words $f95_words $f85_words $f75_words $f50_words $locked_words]
     
     set billable_units_interco $billable_units
     if {$interco_p} {
@@ -407,7 +407,7 @@ for {set i 0} {$i < $trados_files_len} {incr i} {
 	    set interco_company_id $customer_id 
 	}
 	set billable_units_interco [im_trans_trados_matrix_calculate $interco_company_id $px_words $prep_words $p100_words $p95_words $p85_words $p75_words $p50_words $p0_words \
-					$pperfect_words $pcrossfilerepeated_words $f95_words $f85_words $f75_words $f50_words]
+					$pperfect_words $pcrossfilerepeated_words $f95_words $f85_words $f75_words $f50_words $locked_words]
     }
     
     set task_status_id 340
