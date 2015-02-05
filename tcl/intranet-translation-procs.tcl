@@ -588,5 +588,23 @@ ad_proc -public im_translation_freelance_company_helper {
     return [db_string company "select company_id from acs_rels, im_companies where company_id = object_id_one and object_id_two = :freelance_id and company_status_id in ([template::util::tcl_to_sql_list $company_status_ids]) limit 1" -default [im_company_freelance]]
 }
 
-
-
+ad_proc -public -callback im_project_new_redirect -impl translation {
+    {-object_id:required}
+    {-status_id ""}
+    {-type_id ""}
+    {-project_id:required}
+    {-parent_id:required}
+    {-company_id:required}
+    {-project_type_id:required}
+    {-project_name:required}
+    {-project_nr:required}
+    {-workflow_key:required}
+    {-return_url:required}
+} {
+    Redurect if needed
+} {
+    # Returnredirect to translations for translation projects
+    if {[im_category_is_a $project_type_id [im_project_type_translation]] && $project_id eq ""} {
+        ad_returnredirect [export_vars -base "/intranet-translation/projects/new" -url {project_type_id project_status_id company_id parent_id project_nr project_name workflow_key return_url project_id}]
+    }
+}

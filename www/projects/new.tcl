@@ -37,11 +37,26 @@ ad_page_contract {
 # Defaults
 # -----------------------------------------------------------
 
+set n_error 0
 set user_id [ad_maybe_redirect_for_registration]
+set todays_date [lindex [split [ns_localsqltimestamp] " "] 0]
 set user_admin_p [im_is_user_site_wide_or_intranet_admin $user_id]
 set current_url [im_url_with_query]
 set org_project_type_id [im_opt_val project_type_id]
 set sub_navbar ""
+
+set project_nr_field_size [ad_parameter -package_id [im_package_core_id] ProjectNumberFieldSize "" 20]
+set project_nr_field_editable_p [ad_parameter -package_id [im_package_core_id] ProjectNumberFieldEditableP "" 1]
+set enable_nested_projects_p [parameter::get -parameter EnableNestedProjectsP -package_id [im_package_core_id] -default 1] 
+set enable_project_path_p [parameter::get -parameter EnableProjectPathP -package_id [im_package_core_id] -default 0]
+set enable_absolute_project_path_p [parameter::get -parameter EnableAbsoluteProjectPathP -package_id [im_package_core_id] -default 0] 
+set default_currency [ad_parameter -package_id [im_package_cost_id] "DefaultCurrency" "" "EUR"]
+set normalize_project_nr_p [parameter::get_from_package_key -package_key "intranet-core" -parameter "NormalizeProjectNrP" -default 1]
+set sub_navbar ""
+set auto_increment_project_nr_p [parameter::get -parameter ProjectNrAutoIncrementP -package_id [im_package_core_id] -default 0]
+set project_name_field_min_len [parameter::get -parameter ProjectNameMinimumLength -package_id [im_package_core_id] -default 5]
+set project_nr_field_min_len [parameter::get -parameter ProjectNrMinimumLength -package_id [im_package_core_id] -default 5]
+
 
 if { ![exists_and_not_null return_url] && [exists_and_not_null project_id]} {
     set return_url "[im_url_stub]/projects/view?[export_url_vars project_id]"
@@ -71,8 +86,14 @@ set add_budget_hours_p [im_permission $user_id add_budget_hours]
 
 
 set project_exists_p 0
+
 if {[info exists project_id]} {
-    set project_exists_p [db_string project_exists {select 1 from im_projects where project_id = :project_id} -default 0]
+    if {$project_id eq ""} {
+        unset project_id
+    } else {
+        set project_exists_p [db_string project_exists {select 1 from im_projects where project_id = :project_id} -default 0]        
+    }
+
 }
 
 if {$project_exists_p} {
@@ -267,7 +288,7 @@ ad_form -extend -name $form_id -new_request {
     # the "reasonably build numbers" currently available
     set project_nr [im_next_project_nr -customer_id $company_id -parent_id $parent_id]
     if {$project_name eq ""} {
-	set project_name $project_nr
+        	set project_name $project_nr
     }
 
     # Now set the values
@@ -290,17 +311,17 @@ ad_form -extend -name $form_id -new_request {
     # project manager of the project or similar...
     im_project_permissions $user_id $project_id view read write admin
     if {$write} { set perm_p 1 }
-
+    
     # Check if the user has admin rights on the parent_id
     # to allow freelancers to add sub-projects
     if {"" != $parent_id} {
         im_project_permissions $user_id $parent_id view read write admin
         if {$write} { set perm_p 1 }
     }
-    
+
     # Users with "add_projects" privilege can always create new projects...
     if {[im_permission $user_id add_projects]} { set perm_p 1 } 
-    
+
     if {!$perm_p} { 
         ad_return_complaint "Insufficient Privileges" "<li>You don't have sufficient privileges to see this page."
         ad_script_abort
@@ -309,18 +330,87 @@ ad_form -extend -name $form_id -new_request {
     if {[info exists project_nr]} {
         set project_nr [string tolower [string trim $project_nr]]
     }
+    
 
+    if {[template::util::date::compare $end_date $start_date] == -1} {
+        template::element::set_error $form_id end "[_ intranet-core.lt_End_date_must_be_afte]"
+        incr n_error
+    }
+    
+    if { [string length $project_nr] < $project_nr_field_min_len} {
+        # Make sure the project name has a minimum length
+        incr n_error
+        template::element::set_error $form_id project_nr "[lang::message::lookup "" intranet-core.lt_The_project_nr_that "The Project Nr is too short."] <br>
+       [lang::message::lookup "" intranet-core.lt_Please_use_a_project_nr_ "Please use a longer Project Nr or modify the parameter 'ProjectNrMinimumLength'."]"
+    }
+    if { [string length $project_nr] > 100} {
+        incr n_error
+        template::element::set_error $form_id project_nr "[lang::message::lookup "" intranet-core.lt_The_project_nr_is_too_long "The Project Nr is too long."] <br>
+       [lang::message::lookup "" intranet-core.lt_Please_use_a_shorter_project_nr_ "Please use a shorter Project Nr."]"
+    }
+    if {[info exists presales_probability] && "" != $presales_probability && ($presales_probability > 100 || $presales_probability < 0)} {
+        template::element::set_error $form_id presales_probability "Number must be in range (0 .. 100)"
+        incr n_error
+    }
+    
+    # Check for project number duplicates
+    set project_nr_exists [db_string project_nr_exists "
+        select 	count(*)
+        from	im_projects
+        where	project_nr = :project_nr and
+            project_id <> :project_id and
+            (parent_id = :parent_id OR (:parent_id is null and parent_id is null))
+        "]
+    
+     if {$project_nr_exists} {
+         # We have found a duplicate project_nr, now check how to deal with this case:
+         if {$auto_increment_project_nr_p} {
+             # Just increment to the next free number. 
+             set project_nr [im_next_project_nr -customer_id $company_id -parent_id $parent_id]
+        } else {
+             # Report an error
+             incr n_error
+             template::element::set_error $form_id project_nr "[_ intranet-core.lt_The_specified_project]"
+         }
+     }
+    
+    # Make sure the project name has a minimum length
+    if { [string length $project_name] < $project_name_field_min_len} {
+        incr n_error
+        template::element::set_error $form_id project_name "[_ intranet-core.lt_The_project_name_that] <br>
+       [_ intranet-core.lt_Please_use_a_project_]"
+    }
+    
+    # Let's make sure the specified name is unique
+    set project_name_exists [db_string project_name_exists "
+        select 	count(*)
+        from	im_projects
+        where	upper(trim(project_name)) = upper(trim(:project_name)) and
+            project_id <> :project_id and
+            (parent_id = :parent_id OR (:parent_id is null and parent_id is null))
+        "]
+    
+    if { $project_name_exists > 0 } {
+        incr n_error
+        template::element::set_error $form_id project_name "[_ intranet-core.lt_The_specified_name_pr]"
+    }
+
+    
     if {![exists_and_not_null project_path]} {
         set project_path [string tolower [string trim $project_name]]
     }
     
-    # Check if the project_nr already exists, if yes, create a new one
-    set project_nr_p [db_0or1row select_project_nr {
-        SELECT project_id FROM im_projects WHERE project_nr = :project_nr
-    }]
-    if {$project_nr_p} {
-        set project_nr [im_next_project_nr]
+    
+    # The on_submit callback is used to set the error_field variable and provide an error message upon submission of a form
+    # Ideally this should make it into ad_form processing proper, so we can inject into any ad_form submission additional validation checks
+    callback im_project_on_submit -object_id $project_id -form_id $form_id
+    
+    if {[exists_and_not_null error_field]} {
+        form set_error $form_id $error_field $error_message
+        break
     }
+
+} -new_data {
     
     db_transaction {
         set project_id [im_project::new \
@@ -406,7 +496,6 @@ ad_form -extend -name $form_id -new_request {
         # -----------------------------------------------------------------
         # Store dynamic fields
         
-        ns_log Notice "/intranet/projects/new: im_dynfield::attribute_store -object_type $object_type -object_id $project_id -form_id $form_id"
 
         if {[info exists start_date]} {
             set start_date [template::util::date get_property sql_date $start_date]
@@ -442,7 +531,10 @@ ad_form -extend -name $form_id -new_request {
             }
 	    }
 
-        if {[info exists company_contact_id]} {db_dml update_project "update im_projects set company_contact_id = :company_contact_id where project_id = :project_id"}
+        if {[info exists company_contact_id]} {
+            db_dml update_project "update im_projects set company_contact_id = :company_contact_id where project_id = :project_id"
+        }
+        
         if {[info exists source_language_id]} {
         
             # Add the source language as a skill
@@ -497,19 +589,6 @@ ad_form -extend -name $form_id -new_request {
         }
         
         
-        # -----------------------------------------------------------------
-        # Call the "project_create" or "project_update" user_exit
-        
-        im_user_exit_call project_create $project_id
-        
-        
-        
-        # -----------------------------------------------------------------
-        # Flush caches related to the project's information
-        
-        util_memoize_flush_regexp "im_project_has_type_helper.*"
-        util_memoize_flush_regexp "db_list_of_lists company_info.*"
-        
     }
 
     if {[apm_package_installed_p "intranet-freelance"]} {
@@ -518,9 +597,23 @@ ad_form -extend -name $form_id -new_request {
             -object_subtype_id $project_type_id \
             -form_id $form_id \
             -object_id $project_id 
-    }
+    }        
+        
      
 } -after_submit {
+    
+    # -----------------------------------------------------------------
+    # Flush caches related to the project's information
+    
+    util_memoize_flush_regexp "im_project_has_type_helper.*"
+    util_memoize_flush_regexp "db_list_of_lists company_info.*"
+    
+    # -----------------------------------------------------------------
+    # Call the "project_create" or "project_update" user_exit
+    
+    im_user_exit_call project_create $project_id
+        
+
     set return_url [export_vars -base "new-2" {project_id}]
         
     ad_returnredirect $return_url
