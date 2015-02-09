@@ -57,28 +57,25 @@ order by
 
 set ctr 0
 db_foreach column_list_sql $column_sql {
-
     set admin_html ""
     if {$admin_p} { 
-    set url [export_vars -base "/intranet/admin/views/new-column" {column_id return_url}]
-    set admin_html "<a href='$url'>[im_gif wrench ""]</a>" 
+        set url [export_vars -base "/intranet/admin/views/new-column" {{column_id $column_id} return_url}]
+        set admin_html "<a href='$url'>[im_gif wrench ""]</a>" 
     }
 
     if {"" == $visible_for || [eval $visible_for]} {
-    lappend column_headers "[lang::util::localize $column_name]"
-    lappend column_vars "$column_render_tcl"
-    lappend column_headers_admin $admin_html
-    if {"" != $extra_select} { lappend extra_selects $extra_select }
-    if {"" != $extra_from} { lappend extra_froms $extra_from }
-    if {"" != $extra_where} { lappend extra_wheres $extra_where }
-    if {"" != $order_by_clause &&
-        $order_by==$column_name} {
-        set view_order_by_clause $order_by_clause
-    }
+        lappend column_headers "[lang::util::localize $column_name]"
+        lappend column_vars "$column_render_tcl"
+        lappend column_headers_admin $admin_html
+        if {"" != $extra_select} { lappend extra_selects $extra_select }
+        if {"" != $extra_from} { lappend extra_froms $extra_from }
+        if {"" != $extra_where} { lappend extra_wheres $extra_where }
+        if {"" != $order_by_clause && $order_by==$column_name} {
+            set view_order_by_clause $order_by_clause
+        }
     }
 }   
 
-    
 # -------------------- Header ---------------------------------
 set task_table "
     <form action=/intranet-translation/trans-tasks/task-action method=POST>
@@ -86,7 +83,7 @@ set task_table "
     <table border=0>
     <tr>
 "
-        
+
 foreach col $column_headers {
     set wrench_html [lindex $column_headers_admin $ctr]
     regsub -all {"} $col {,} col
@@ -99,6 +96,7 @@ foreach col $column_headers {
         set header_tr [lang::message::lookup "" intranet-translation.[lang::util::suggest_key $header] $header]
     }
     append task_table "<td class=rowtitle>$header_tr $wrench_html</td>\n"
+    incr ctr
 }
 append task_table "\n</tr>\n"
     
