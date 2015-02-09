@@ -15,7 +15,7 @@ ad_page_contract {
 } {
     return_url:optional
     project_id:integer
-    { delete_task_id:multiple "" }
+    { bulk_task_id:multiple "" }
     billable_units:array,optional
     billable_units_interco:array,optional
     end_date:array,optional
@@ -284,7 +284,10 @@ switch -glob $action {
     "delete" {
 	# "Del" button pressed: delete the marked tasks
 	#
-	foreach task_id $delete_task_id {
+	
+	ds_comment "asdasd $bulk_task_id"
+	asasd
+	foreach task_id $bulk_task_id {
 	    ns_log Notice "delete task: $task_id"
 
 	    if { [catch {

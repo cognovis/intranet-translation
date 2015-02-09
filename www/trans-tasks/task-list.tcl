@@ -24,9 +24,6 @@ set page_title "$project_nr - [_ intranet-translation.Translation_Tasks]"
 set context_bar [im_context_bar [list /intranet/projects/ "[_ intranet-translation.Projects]"] [list "/intranet/projects/view?project_id=$project_id" "[_ intranet-translation.One_project]"] $page_title]
 set company_view_page "/intranet/companies/view"
 
-set task_component [im_task_component $user_id $project_id $return_url]
-set task_new_component [im_new_task_component $user_id $project_id $return_url]
-
 # Setup the subnavbar
 set bind_vars [ns_set create]
 ns_set put $bind_vars project_id $project_id
