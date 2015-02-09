@@ -411,7 +411,7 @@ append task_table "\n</tr>\n"
         }
     
         # Delete Checkbox
-        set bulk_checkbox "<input type=checkbox name=bulk_task_id.$task_id value=$task_id id=\"bulk_task_id.$task_id\">"
+        set bulk_checkbox "<input type=checkbox name=bulk_task_id value=$task_id id=\"bulk_task_id,$task_id\">"
     
         # ------------------------------------------
         # price and cost

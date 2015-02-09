@@ -284,9 +284,7 @@ switch -glob $action {
     "delete" {
 	# "Del" button pressed: delete the marked tasks
 	#
-	
-	ds_comment "asdasd $bulk_task_id"
-	asasd
+
 	foreach task_id $bulk_task_id {
 	    ns_log Notice "delete task: $task_id"
 
@@ -321,7 +319,7 @@ switch -glob $action {
 	#
 	
 	#checking of the batch
-	if {[llength $delete_task_id] <= 1} {
+	if {[llength $bulk_task_id] <= 1} {
 	    ad_return_complaint 1 "<p>[lang::message::lookup "" intranet-translation.Less_then_two_files_selected "Less then two files selected"]</b>:<br>
 		[lang::message::lookup "" intranet-translation.No_need_for_batching_msg "
 			There is no need for batching for less then two file.
@@ -330,7 +328,7 @@ switch -glob $action {
 	    ad_script_abort
 	}
 
-#	im_translation_batching_check_tasks $delete_task_id
+#	im_translation_batching_check_tasks $bulk_task_id
 
 	# Base path to files in the filestorage
 	db_1row projects_info "
@@ -384,7 +382,7 @@ switch -glob $action {
 			task_type_id, task_status_id, source_language_id, target_language_id, task_uom_id,
 			trans_id, edit_id, proof_id, other_id, project_id
 		from	im_trans_tasks
-		where	task_id in ([join $delete_task_id ", "])
+		where	task_id in ([join $bulk_task_id ", "])
 	"
   
 	db_foreach task_duplicate $sql_query { 
@@ -422,8 +420,8 @@ switch -glob $action {
 	    if {"" != $trans_id || "" != $edit_id || "" != $proof_id || "" != $other_id} { set err "Already Assigned" }
 #	    if {"" != $comp_ && $comp_ != $} { set err "" }
 	    if {"" != $err} {
-		ad_return_complaint 1 "[lang::message::lookup "" intranet-translation.Invalid_Batching "Invalid Batching"]: $err"
-		ad_script_abort
+        	    ad_return_complaint 1 "[lang::message::lookup "" intranet-translation.Invalid_Batching "Invalid Batching"]: $err"
+            ad_script_abort
 	    }
 	    set comp_source_language_id $source_language_id
 	    set comp_target_language_id $target_language_id
@@ -517,7 +515,7 @@ switch -glob $action {
 	exec /bin/bash -c "$zip_command"
     
 	# Delete the original tasks
-  	foreach task_id $delete_task_id {
+  	foreach task_id $bulk_task_id {
 	    if { [catch {
 		if {$trans_quality_exists_p} {
 		    db_dml del_q_report_entries "delete from im_trans_quality_entries where report_id in (select report_id from im_trans_quality_reports where task_id = :task_id)"
