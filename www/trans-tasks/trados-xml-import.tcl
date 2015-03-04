@@ -269,6 +269,10 @@ for {set i 0} {$i < $trados_files_len} {incr i} {
 	set childnode [lindex $list_files $i]
 	set filename [$childnode getAttribute $attr_name]
 	
+	# Remove the sdlxliff
+	set filename [string trimright $filename "sdlxliff"]
+	set filename [string range $filename 0 end-1]
+
 	ns_log Notice "trados-import: Xml import of the $filename file."
 	set analyseElement [$childnode firstChild] 
 	
