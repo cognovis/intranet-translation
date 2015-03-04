@@ -389,7 +389,7 @@ db_foreach select_tasks $task_sql {
         
         # Append the end date to the list so we can prefill for the mass selection
         if {$this_end_date ne ""} {
-	        lappend ${type}_end_dates $this_end_date
+	        lappend ${type}_end_dates.${target_language_id} $this_end_date
 	    }
     }
     
@@ -785,49 +785,50 @@ set mass_assignment_html_header ""
 
 append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Target_Lang]</td>\n"
 if {$n_trans>0} {
-    append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Trans]</td>\n"
+    append mass_assignment_html_header "<td class=rowtitle colspan=2>[_ intranet-translation.Trans]</td>\n"
 }
 if {$n_edit>0} {
-    append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Edit]</td>\n"
+    append mass_assignment_html_header "<td class=rowtitle colspan=2>[_ intranet-translation.Edit]</td>\n"
 }
 if {$n_proof>0} {
-    append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Proof]</td>\n"
+    append mass_assignment_html_header "<td class=rowtitle colspan=2>[_ intranet-translation.Proof]</td>\n"
 }
 if {$n_other>0} {
-    append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Other]</td>\n"
+    append mass_assignment_html_header "<td class=rowtitle colspan=2>[_ intranet-translation.Other]</td>\n"
 }
+
+append mass_assignment_html_header "<td class=rowtitle>[_ intranet-translation.Task_Name]"
+set ctr 0
+set no_langs [llength $target_language_ids]
 
 foreach target_language_id $target_language_ids {
     append mass_assignment_html_body "<tr><td>[im_category_from_id $target_language_id]</td>\n"
     foreach type {trans edit proof other} {
         if { [set n_${type}] > 0 } {
-            append mass_assignment_html_body "<td>[im_task_user_select -source_language_id $orig_source_language_id -target_language_id $target_language_id -with_no_change ${type}_mass.$target_language_id $project_resource_list "" translator]</td>\n"
+            if {[exists_and_not_null ${type}_end_dates.$target_language_id]} {
+                set end_date [lindex [lsort -unique [set ${type}_end_dates.$target_language_id]] 0]
+            } else {
+                set end_date ""
+            }
+            append mass_assignment_html_body "<td>[im_task_user_select -source_language_id $orig_source_language_id -target_language_id $target_language_id -with_no_change ${type}_mass.$target_language_id $project_resource_list "" translator]</td>
+            <td><input type=text size=20 maxlength=25 name=${type}_end_date.$target_language_id value=\"$end_date\"></td>\n"
         } else {
-	        append mass_assignment_html_body "<input type=hidden name=${type}_mass.$target_language_id value=''>"
+	        append mass_assignment_html_body "<input type=hidden name=${type}_mass.$target_language_id value=''>
+	        <input type=hidden name=${type}_end_date.$target_language_id value=''>"
         }
+    }
+    incr ctr
+    if {$ctr == 1} {
+        append mass_assignment_html_body "<td rowspan=$no_langs valign='top'><ul>"
+        # Append the task names
+        db_foreach task_names {select task_name,min(task_id) as task_id from im_trans_tasks where project_id = :project_id group by task_name} {
+            append mass_assignment_html_body "<input type=checkbox name='bulk_file_ids' id='bulk_file_ids,$task_id' value='$task_id'>$task_name<br />"
+        }
+        append mass_assignment_html_body "</td>"
     }
      append mass_assignment_html_body "</tr>"
 } 
 
-# Now add a line for the end date
-append mass_assignment_html_body "<tr><td>[_ intranet-core.End_Date]</td>\n"
-foreach type {trans edit proof other} {
-	if { [set n_${type}] > 0 } {
-		set end_date [lindex [lsort -unique [set ${type}_end_dates]] 0]
-			
-		# Use ad_form templating for consistent looks
-
-		# if {[regexp {^(\d{4})\-(\d{2})\-(\d{2}) (\d{2}):(\d{2}):(\d{2})\+(\d{2})$} $end_date match year moy dom hod moh som tz]} { set end_date [list $year $moy $dom $hod $moh $som $tz] }
-		# set element(name) ${type}_end_date
-		# set element(value) $end_date
-		# set element(mode) "edit"
-		# append mass_assignment_html_body "<td>[template::widget::timestamp element ""]</td>"
-		append mass_assignment_html_body "<td><input type=text size=25 maxlength=25 name=${type}_end_date value=\"$end_date\"></td>"	
-	} else {
-		append mass_assignment_html_body "<input type=hidden name=${type}_end_date value=''>"
-	}
-}
-append mass_assignment_html_body "</tr>"
 
 set task_type_list [array get task_types]
 set mass_assignment_html "
@@ -835,7 +836,7 @@ set mass_assignment_html "
 [export_form_vars project_id target_language_ids return_url orderby task_type_list]
 <table>
 <tr>
-  <td colspan=5 class=rowtitle align=center>[_ intranet-translation.Mass_Assignment]</td>
+  <td colspan=10 class=rowtitle align=center>[_ intranet-translation.Mass_Assignment]</td>
 </tr>
 <tr align=center>
   $mass_assignment_html_header

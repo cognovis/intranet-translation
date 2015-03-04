@@ -2496,3 +2496,19 @@ where
     ns_set free $file_set
     return $missing_file_list
 }
+
+ad_proc im_trans_trados_remove_sdlxliff {} {
+    Remove the sdlxliff extension from the filename
+    
+} {
+    db_foreach tasks {select task_name, task_id from im_trans_tasks where task_name like '%sdlxliff'} {
+       set task_name [string trimright $task_name "sdlxliff"]
+       set task_name [string range $task_name 0 end-1]
+       catch {db_dml update "update im_trans_tasks set task_name = :task_name where task_id = :task_id"}
+    }
+    db_foreach tasks {select task_filename, task_id from im_trans_tasks where task_filename like '%sdlxliff'} {
+       set task_filename [string trimright $task_filename "sdlxliff"]
+       set task_filename [string range $task_filename 0 end-1]
+       catch {db_dml update "update im_trans_tasks set task_filename = :task_filename where task_id = :task_id"}
+    }
+}

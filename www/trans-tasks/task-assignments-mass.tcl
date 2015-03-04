@@ -22,17 +22,20 @@ ad_page_contract {
     edit_mass:array
     proof_mass:array
     other_mass:array
-    trans_end_date
-    proof_end_date
-    edit_end_date
-    other_end_date
+    trans_end_date:array
+    proof_end_date:array
+    edit_end_date:array
+    other_end_date:array
+    bulk_file_ids:multiple
 }
 
 array set task_types $task_type_list
 set user_id [ad_maybe_redirect_for_registration]
 
 foreach target_language_id $target_language_ids {
-    set task_ids [db_list task_ids "select task_id from im_trans_tasks where target_language_id = :target_language_id and project_id = :project_id"]   
+    set task_ids [db_list task_ids "select task_id from im_trans_tasks where target_language_id = :target_language_id and project_id = :project_id and task_name in (select task_name from im_trans_tasks where task_id in ([template::util::tcl_to_sql_list $bulk_file_ids]))"]   
+    
+    ds_comment "$target_language_id :: $task_ids"
     foreach task_id $task_ids {
     
         set update_sql_list [list]    
@@ -41,10 +44,10 @@ foreach target_language_id $target_language_ids {
                 set $type [set ${type}_mass($target_language_id)]
                 if {[set $type] ne "no_change"} {
                     lappend update_sql_list "${type}_id = :$type"
-                }
-                set ${type}_end_date [set ${type}_end_date]
-                if {[set ${type}_end_date] ne ""} {
-                    lappend update_sql_list "${type}_end_date = :${type}_end_date"
+                    set ${type}_end_date_target [set ${type}_end_date($target_language_id)]
+                    if {[set ${type}_end_date_target] ne ""} {
+                        lappend update_sql_list "${type}_end_date = :${type}_end_date_target"
+                    }
                 }
             }
         }
