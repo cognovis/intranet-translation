@@ -293,8 +293,12 @@ ad_form -extend -name $form_id -new_request {
 
     # Now set the values
     template::element::set_value $form_id project_nr $project_nr
-    template::element::set_value $form_id company_id $company_id
     template::element::set_value $form_id project_name $project_name
+
+    set company_enabled_p [db_string company "select 1 from im_dynfield_type_attribute_map tam, im_dynfield_attributes da, acs_attributes a where a.attribute_id = da.acs_attribute_id and a.attribute_name = 'company_id' and tam.attribute_id = da.attribute_id and tam.object_type_id = :project_type_id and tam.display_mode in ('edit','display')" -default 0]
+    if {$company_enabled_p} {
+	template::element::set_value $form_id company_id $company_id
+    }
 
 } -on_submit {
 
