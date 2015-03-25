@@ -448,8 +448,8 @@ ad_proc -public im_trans_trados_matrix_component {
 
     if {![im_permission $user_id view_costs]} { return "" }
 
-    array set matrix [im_trans_trados_matrix $object_id]
     set header_html "
+<td class=rowtitle align=center></td>
 <td class=rowtitle align=center>[_ intranet-translation.XTr]</td>
 <td class=rowtitle align=center>[_ intranet-translation.Rep]</td>
 
@@ -472,38 +472,47 @@ ad_proc -public im_trans_trados_matrix_component {
 
 "
 
-    set value_html "
-<td align=right>[expr round(1000.0 * $matrix(x)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(rep)) / 10.0]%</td>
 
-<td align=right>[expr round(1000.0 * $matrix(perf)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(cfr)) / 10.0]%</td>
+    set value_html ""
+    foreach trans_task_type {Trans Edit Proof} {
+        
+        array set matrix [im_trans_trados_matrix -task_type [string tolower $trans_task_type] $object_id]
+        
+        append value_html "
+            <tr class=roweven>
+                <td align=right class=rowtitle>[_ intranet-translation.${trans_task_type}]</td>
 
-<td align=right>[expr round(1000.0 * $matrix(100)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(95)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(85)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(75)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(50)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(0)) / 10.0]%</td>
-
-<td align=right>[expr round(1000.0 * $matrix(f95)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(f85)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(f75)) / 10.0]%</td>
-<td align=right>[expr round(1000.0 * $matrix(f50)) / 10.0]%</td>
-
-<td align=right>[expr round(1000.0 * $matrix(locked)) / 10.0]%</td>
-
-"
+                <td align=right>[expr round(1000.0 * $matrix(x)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(rep)) / 10.0]%</td>
+                
+                <td align=right>[expr round(1000.0 * $matrix(perf)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(cfr)) / 10.0]%</td>
+                
+                <td align=right>[expr round(1000.0 * $matrix(100)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(95)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(85)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(75)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(50)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(0)) / 10.0]%</td>
+                
+                <td align=right>[expr round(1000.0 * $matrix(f95)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(f85)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(f75)) / 10.0]%</td>
+                <td align=right>[expr round(1000.0 * $matrix(f50)) / 10.0]%</td>
+                
+                <td align=right>[expr round(1000.0 * $matrix(locked)) / 10.0]%</td>
+            </tr>
+        "
+    }
 
     set html "
-<form action=\"/intranet-translation/matrix/new\" method=POST>
-[export_form_vars object_id return_url]
-<table border=0>
-<tr class=rowtitle><td class=rowtitle colspan=8 align=center>[_ intranet-translation.Trados_Matrix] ($matrix(type))</td></tr>
-<tr class=rowtitle>$header_html</tr>
-<tr class=roweven>$value_html</tr>
-"
-
+        <form action=\"/intranet-translation/matrix/new\" method=POST>
+        [export_form_vars object_id return_url]
+        <table border=0>
+        <tr class=rowtitle><td class=rowtitle colspan=16 align=center>[_ intranet-translation.Trados_Matrix] ($matrix(type))</td></tr>
+        <tr class=rowtitle>$header_html</tr>
+        $value_html
+    "
     if {[im_permission $user_id add_costs]} {
 
 	append html "
@@ -539,6 +548,7 @@ ad_proc -public im_trans_trados_matrix_calculate {
     { f75_words 0 }
     { f50_words 0 }
     { locked_words 0 }
+    { task_type "trans"}
 } {
     Calculate the number of "effective" words based on
     a valuation of repetitions from the associated tradox
@@ -553,7 +563,7 @@ ad_proc -public im_trans_trados_matrix_calculate {
 } {
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate: -------- object_id: $object_id"
     return [im_trans_trados_matrix_calculate_helper $object_id $px_words $prep_words $p100_words $p95_words $p85_words $p75_words $p50_words $p0_words \
-		$pperfect_words $pcfr_words $f95_words $f85_words $f75_words $f50_words $locked_words]
+		$pperfect_words $pcfr_words $f95_words $f85_words $f75_words $f50_words $locked_words $task_type]
 }
 
 
@@ -574,25 +584,26 @@ ad_proc -public im_trans_trados_matrix_calculate_helper {
     { f75_words 0 }
     { f50_words 0 }
     { locked_words 0 }
+    { task_type "trans" }
 } {
     See im_trans_trados_matrix_calculate for comments...
 } {
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: object_id: $object_id"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: px_words: $px_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: prep_words $prep_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p100_words $p100_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p95_words $p95_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p85_words $p85_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p75_words $p75_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p50_words $p50_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p0_words $p0_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: pperfect_words $pperfect_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: pcfr_words $pcfr_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: f95_words $f95_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: f85_words $f85_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: f75_words $f75_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: f50_words $f50_words"
-    ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: locked_words $locked_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: object_id: $object_id"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: px_words: $px_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: prep_words $prep_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p100_words $p100_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p95_words $p95_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p85_words $p85_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p75_words $p75_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p50_words $p50_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: p0_words $p0_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: pperfect_words $pperfect_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: pcfr_words $pcfr_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: f95_words $f95_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: f85_words $f85_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: f75_words $f75_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: f50_words $f50_words"
+    ns_log DEBUG "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: locked_words $locked_words"
 
     if {"" == $px_words} { set px_words 0 }
     if {"" == $prep_words} { set prep_words 0 }
@@ -604,13 +615,13 @@ ad_proc -public im_trans_trados_matrix_calculate_helper {
     if {"" == $p0_words} { set p0_words 0 }
 
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: Getting matrix for object_id: $object_id"
-    array set matrix [im_trans_trados_matrix $object_id]
+    array set matrix [im_trans_trados_matrix -task_type $task_type $object_id]
 
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: Array found: [array get matrix]"
     
     # ad_return_complaint xx "pperfect_words: $pperfect_words, matrix(perf):  $matrix(perf)"
 
-    set task_units [expr \
+    set task_units [format "%.0f" [expr \
                     ($px_words * $matrix(x)) + \
                     ($prep_words * $matrix(rep)) + \
                     ($pcfr_words * $matrix(cfr)) + \
@@ -626,29 +637,32 @@ ad_proc -public im_trans_trados_matrix_calculate_helper {
                     ($f50_words * $matrix(f50)) + \
                     ($locked_words * $matrix(locked)) + \
                     ($pperfect_words * $matrix(perf))		       
-    ]
+    ]]
 
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: Found task_units: $task_units" 
     return $task_units
 }
 
 
-ad_proc -public im_trans_trados_matrix { object_id } {
+ad_proc -public im_trans_trados_matrix { 
+    {-task_type "trans"}
+    object_id 
+} {
     Returns an array with the trados matrix values for an object.
 } {
     set object_type [db_string get_object_type "select object_type from acs_objects where object_id=:object_id" -default none]
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix: Object_id: $object_id -> object_type: $object_type"
 
     switch $object_type {
-	im_project {
-	    array set matrix [im_trans_trados_matrix_project $object_id]
-	}
-	im_company {
-	    array set matrix [im_trans_trados_matrix_company $object_id]
-	}
-	default {
-	    array set matrix [im_trans_trados_matrix_default]
-	}
+        	im_project {
+        	    array set matrix [im_trans_trados_matrix_project -task_type $task_type $object_id]
+        	}
+        	im_company {
+        	    array set matrix [im_trans_trados_matrix_company -task_type $task_type $object_id]
+        	}
+        	default {
+        	    array set matrix [im_trans_trados_matrix_default]
+        	}
     }
 
     # Make sure there are no empty values that might give errors when multplying
@@ -663,25 +677,26 @@ ad_proc -public im_trans_trados_matrix { object_id } {
 }
 
 
-ad_proc -public im_trans_trados_matrix_project { project_id } {
+ad_proc -public im_trans_trados_matrix_project { 
+    {-task_type "trans"}
+    project_id 
+} {
     Returns an array with the trados matrix values for a project.
 } {
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_project: Entering ..."    
-    set count [db_string matrix_count "select count(*) from im_trans_trados_matrix where object_id=:project_id"]
+    set count [db_string matrix_count "select count(*) from im_trans_trados_matrix where object_id=:project_id and task_type = :task_type"]
     if {!$count} { 
-	set company_id [db_string project_company "select company_id from im_projects project_id=:project_id"]
-	ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_project: Found company_id $company_id, calling: im_trans_trados_matrix_company" 
-	return [im_trans_trados_matrix_company $company_id] 
+        	set company_id [db_string project_company "select company_id from im_projects project_id=:project_id"]
+        	ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_project: Found company_id $company_id, calling: im_trans_trados_matrix_company" 
+        	return [im_trans_trados_matrix_company -task_type $task_type $company_id] 
     }
 
     # Get match100, match95, ...
     db_1row matrix_select "
-	select	m.*,
-		acs_object.name(o.object_id) as object_name
-	from	acs_objects o,
-		im_trans_trados_matrix m
-	where	o.object_id = :project_id
-		and o.object_id = m.object_id(+)
+	select	m.*
+	from		im_trans_trados_matrix m
+	where	m.object_id = :project_id
+    and     m.task_type = :task_type
     "
 
     set matrix(x) $match_x
@@ -702,32 +717,39 @@ ad_proc -public im_trans_trados_matrix_project { project_id } {
 
     set matrix(locked) $locked
 
-    set matrix(type) company
+    set matrix(type) project
     set matrix(object) $project_id
 
     return [array get matrix]
 }
 
 
-ad_proc -public im_trans_trados_matrix_company { company_id } {
+ad_proc -public im_trans_trados_matrix_company { 
+    {-task_type "trans"}
+    company_id 
+} {
     Returns an array with the trados matrix values for a company.
 } {
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_company: Entering ..."
-    set count [db_string matrix_count "select count(*) from im_trans_trados_matrix where object_id=:company_id"]
+    set count [db_string matrix_count "select count(*) from im_trans_trados_matrix where object_id=:company_id and task_type = :task_type"]
     if {!$count} { 
-	ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_company: No entries found in table im_trans_trados_matrix, now calling im_trans_trados_matrix_internal" 
-	return [im_trans_trados_matrix_internal] 
+        	ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_company: No entries found in table im_trans_trados_matrix, now calling im_trans_trados_matrix_internal"
+        	set provider_p [db_string provide_p "select 1 from im_companies where company_id = :company_id and company_type_id in ([template::util::tcl_to_sql_list [im_sub_categories [im_company_type_provider]]])" -default 0]
+        	if {$provider_p} {
+            	return [im_trans_trados_matrix_internal -task_type $task_type -provider]
+        	} else {
+            	return [im_trans_trados_matrix_internal -task_type $task_type]            	
+        	}
+
     }
 
     # Get match100, match95, ...
     db_1row matrix_select "
-	select	m.*,
-		acs_object.name(o.object_id) as object_name
-	from	acs_objects o,
-		im_trans_trados_matrix m
-	where	o.object_id = :company_id
-		and o.object_id = m.object_id(+)
-    "
+    select	m.*
+	    from		im_trans_trados_matrix m
+	    where	m.object_id = :company_id
+	    and     m.task_type = :task_type
+	    "
 
     set matrix(x) $match_x
     set matrix(rep) $match_rep
@@ -753,28 +775,34 @@ ad_proc -public im_trans_trados_matrix_company { company_id } {
     return [array get matrix]
 }
 
-ad_proc -public im_trans_trados_matrix_internal { } {
+ad_proc -public im_trans_trados_matrix_internal {
+    {-task_type "trans"}
+    -provider:boolean
+} {
     Returns an array with the trados matrix values for the "Internal" company.
 } {
 
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_internal: Entering im_trans_trados_matrix_internal"
 
-    set company_id [im_company_internal]
+    if {$provider_p} {
+        set company_id [im_company_freelance]
+    } else {
+        set company_id [im_company_internal]
+    }
+
     
-    set count [db_string matrix_count "select count(*) from im_trans_trados_matrix where object_id=:company_id"]
+    set count [db_string matrix_count "select count(*) from im_trans_trados_matrix where object_id=:company_id and task_type = :task_type"]
     if {!$count} { 
-	ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_internal: No entries in table im_trans_trados_matrix found for company_id: company_id, calling im_trans_trados_matrix_default"
-	return [im_trans_trados_matrix_default] 
+        	ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_internal: No entries in table im_trans_trados_matrix found for company_id: company_id, calling im_trans_trados_matrix_default"
+        	return [im_trans_trados_matrix_default] 
     }
 
     # Get match100, match95, ...
-    db_1row matrix_select "
-	select	m.*,
-		acs_object.name(o.object_id) as object_name
-	from	acs_objects o,
-		im_trans_trados_matrix m
-	where	o.object_id = :company_id
-		and o.object_id = m.object_id(+)
+    db_1row internal_matrix_select "
+	select	m.*
+	from		im_trans_trados_matrix m
+	where	m.object_id = :company_id
+		and m.task_type = :task_type
     "
 
     set matrix(x) $match_x

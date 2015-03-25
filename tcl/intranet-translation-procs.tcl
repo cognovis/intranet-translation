@@ -210,6 +210,11 @@ ad_proc -public im_translation_create_purchase_orders {
     # ---------------------------------------------------------------
 
     set editing_words_per_hour [ad_parameter -package_id [im_package_freelance_invoices_id] "EditingWordsPerHour" "" 1000]
+    if {$editing_words_per_hour ne 1} {
+        # We obviously want to keep the word count
+        set action "hourly_edit"
+    }
+    
     set freelance_ids [list]
 
     db_foreach task_tasks $task_sql {
@@ -241,11 +246,11 @@ ad_proc -public im_translation_create_purchase_orders {
             # ---------------------------------------------------------------
 
             switch $action {
-                trans {
-                    array set provider_matrix [im_trans_trados_matrix $provider_id]
+                trans - edit - proof {
+                    array set provider_matrix [im_trans_trados_matrix -task_type $action $provider_id]
 
                     db_1row billable_units "
-                                        select (tt.match_x * $provider_matrix(x) +
+                                        select round((tt.match_x * $provider_matrix(x) +
                                                 tt.match_rep * $provider_matrix(rep) +
                                                 tt.match_perf * $provider_matrix(perf) +
                                                 tt.match_cfr * $provider_matrix(cfr) +
@@ -258,8 +263,9 @@ ad_proc -public im_translation_create_purchase_orders {
                                                 tt.match_f95 * $provider_matrix(f95) +
                                                 tt.match_f85 * $provider_matrix(f85) +
                                                 tt.match_f75 * $provider_matrix(f75) +
-                                                tt.match_f50 * $provider_matrix(f50)
-                                            )   as po_billable_units, 
+                                                tt.match_f50 * $provider_matrix(f50) +
+                                                tt.locked * $provider_matrix(locked)
+                                            ),0)   as po_billable_units, 
                                             tt.task_uom_id as po_task_uom_id
                                         from im_trans_tasks tt
                                         where task_id = :task_id
@@ -278,7 +284,8 @@ ad_proc -public im_translation_create_purchase_orders {
                                         )
                                     "
                 }
-                edit {
+                hourly_edit {
+                    set action "edit"
                     db_1row billable_units "
                             select (	tt.match_x +
                                     tt.match_rep +
@@ -314,7 +321,7 @@ ad_proc -public im_translation_create_purchase_orders {
                             )
                     "
                 }
-                proof - other {
+                other {
                     db_1row billable_units "
                             select  tt.billable_units as po_billable_units,
                                     tt.task_uom_id as po_task_uom_id
@@ -331,6 +338,7 @@ ad_proc -public im_translation_create_purchase_orders {
             
             set create_line_item(${task_id}_${po_task_type_id}_${freelance_id}) 1
             set billable_units_task(${task_id}_${po_task_type_id}_${freelance_id}) $po_billable_units
+
             set uom(${task_id}_${po_task_type_id}_${freelance_id}) $po_task_uom_id
 
             set subject_area($task_id) $subject_area_id

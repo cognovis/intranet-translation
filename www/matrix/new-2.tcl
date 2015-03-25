@@ -18,26 +18,63 @@ ad_page_contract {
 
     @author mbryzek@arsdigita.com
     @author Frank Bergmann (frank.bergmann@project-open.com)
+    @author Malte Sussdorff ( malte.sussdorff@cognovis.de )
 } {
     return_url:optional
     object_id:integer
-    match_x:float
-    match_rep:float
-    match100:float
-    match95:float
-    match85:float
-    match75:float
-    match50:float
-    match0:float
+    trans_match_x:float
+    trans_match_rep:float
+    trans_match100:float
+    trans_match95:float
+    trans_match85:float
+    trans_match75:float
+    trans_match50:float
+    trans_match0:float
 
-    match_perf:float
-    match_cfr:float
-    match_f95:float
-    match_f85:float
-    match_f75:float
-    match_f50:float
+    trans_match_perf:float
+    trans_match_cfr:float
+    trans_match_f95:float
+    trans_match_f85:float
+    trans_match_f75:float
+    trans_match_f50:float
 
-    locked:float
+    trans_locked:float
+
+    edit_match_x:float
+    edit_match_rep:float
+    edit_match100:float
+    edit_match95:float
+    edit_match85:float
+    edit_match75:float
+    edit_match50:float
+    edit_match0:float
+    
+    edit_match_perf:float
+    edit_match_cfr:float
+    edit_match_f95:float
+    edit_match_f85:float
+    edit_match_f75:float
+    edit_match_f50:float
+    
+    edit_locked:float
+    
+    proof_match_x:float
+    proof_match_rep:float
+    proof_match100:float
+    proof_match95:float
+    proof_match85:float
+    proof_match75:float
+    proof_match50:float
+    proof_match0:float
+    
+    proof_match_perf:float
+    proof_match_cfr:float
+    proof_match_f95:float
+    proof_match_f85:float
+    proof_match_f75:float
+    proof_match_f50:float
+    
+    proof_locked:float
 }
 
 # -----------------------------------------------------------------
@@ -54,7 +91,7 @@ set perm_cmd "${object_type}_permissions \$user_id \$object_id view read write a
 eval $perm_cmd
 
 if {!$write} {
-    ad_return_complaint 1 "[_ intranet-translation.lt_You_have_no_rights_to]
+    ad_return_complaint 1 "[_ intranet-translation.lt_You_have_no_rights_to]"
     return
 }
 
@@ -62,34 +99,37 @@ if {!$write} {
 # Update the object
 # -----------------------------------------------------------------
 
-set count [db_string matrix_count "select count(*) from im_trans_trados_matrix where object_id=:object_id"]
-
-if {!$count} {
-    db_dml insert_matrix "
-insert into im_trans_trados_matrix 
-(object_id, match_x, match_rep, match100, match95, match85, match75, match50, match0) values
-(:object_id, :match_x, :match_rep, :match100, :match95, :match85, :match75, :match50, :match0)"
+foreach trans_task_type {trans edit proof} {
+    set count [db_string matrix_count "select count(*) from im_trans_trados_matrix where object_id=:object_id and task_type=:trans_task_type"]
+    ds_comment "$trans_task_type ::: [set ${trans_task_type}_locked]"
+    if {!$count} {
+        db_dml insert_matrix "
+    insert into im_trans_trados_matrix 
+    (object_id, match_x, match_rep, match100, match95, match85, match75, match50, match0, task_type) values
+    (:object_id, :${trans_task_type}_match_x, :${trans_task_type}_match_rep, :${trans_task_type}_match100, :${trans_task_type}_match95, :${trans_task_type}_match85, :${trans_task_type}_match75, :${trans_task_type}_match50, :${trans_task_type}_match0, :trans_task_type)"
+    }
+    
+    db_dml update_matrix "
+    update im_trans_trados_matrix set
+    	match_x = :${trans_task_type}_match_x,
+    	match_rep = :${trans_task_type}_match_rep,
+    	match100 = :${trans_task_type}_match100,
+    	match95 = :${trans_task_type}_match95,
+    	match85 = :${trans_task_type}_match85,
+    	match75 = :${trans_task_type}_match75,
+    	match50 = :${trans_task_type}_match50,
+    	match0 = :${trans_task_type}_match0,
+    	match_perf = :${trans_task_type}_match_perf,
+    	match_cfr = :${trans_task_type}_match_cfr,
+    	match_f95 = :${trans_task_type}_match_f95,
+    	match_f85 = :${trans_task_type}_match_f85,
+    	match_f75 = :${trans_task_type}_match_f75,
+    	match_f50 = :${trans_task_type}_match_f50,
+    	locked = :${trans_task_type}_locked
+    where
+    	object_id = :object_id
+    	and task_type = :trans_task_type
+    "
 }
-
-db_dml update_matrix "
-update im_trans_trados_matrix set
-	match_x = :match_x,
-	match_rep = :match_rep,
-	match100 = :match100,
-	match95 = :match95,
-	match85 = :match85,
-	match75 = :match75,
-	match50 = :match50,
-	match0 = :match0,
-	match_perf = :match_perf,
-	match_cfr = :match_cfr,
-	match_f95 = :match_f95,
-	match_f85 = :match_f85,
-	match_f75 = :match_f75,
-	match_f50 = :match_f50,
-	locked = :locked
-where
-	object_id = :object_id
-"
 
 ad_returnredirect $return_url

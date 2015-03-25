@@ -25,39 +25,33 @@ if {!$read} {
 set export_vars [export_form_vars object_id return_url]
 
 # Get match100, match95, ...
-db_1row matrix_select "
-	select	m.*,
-		acs_object.name(o.object_id) as object_name
-	from	acs_objects o,
-		im_trans_trados_matrix m
-	where	o.object_id = :object_id
-		and o.object_id = m.object_id(+)
-"
+set object_name [db_string object_name "select im_name_from_id(:object_id) from dual" -default ""]
+foreach trans_task_type [list trans edit proof] {
 
-# Get the default trados matrix
-array set default [im_trans_trados_matrix_internal]
+    array set default [im_trans_trados_matrix -task_type $trans_task_type $object_id]
+    set ${trans_task_type}_match0 $default(0)
+    set ${trans_task_type}_match50 $default(50)
+    set ${trans_task_type}_match75 $default(75)
+    set ${trans_task_type}_match85 $default(85)
+    set ${trans_task_type}_match95 $default(95)
+    set ${trans_task_type}_match100 $default(100)
+    set ${trans_task_type}_match_rep $default(rep)
+    set ${trans_task_type}_match_x $default(x)
+    
+    set ${trans_task_type}_match_perf $default(perf)
+    set ${trans_task_type}_match_cfr $default(cfr)
+    
+    set ${trans_task_type}_match_f50 $default(f50)
+    set ${trans_task_type}_match_f75 $default(f75)
+    set ${trans_task_type}_match_f85 $default(f85)
+    set ${trans_task_type}_match_f95 $default(f95)
+    
+    set ${trans_task_type}_locked $default(locked)
 
-if {"" == $match0} { set match0 $default(0) }
-if {"" == $match50} { set match50 $default(50) }
-if {"" == $match75} { set match75 $default(75) }
-if {"" == $match85} { set match85 $default(85) }
-if {"" == $match95} { set match95 $default(95) }
-if {"" == $match100} { set match100 $default(100) }
-if {"" == $match_rep} { set match_rep $default(rep) }
-if {"" == $match_x} { set match_x $default(x) }
-
-if {"" == $match_perf} { set match_perf $default(perf) }
-if {"" == $match_cfr} { set match_perf $default(cfr) }
-
-if {"" == $match_f50} { set match50 $default(f50) }
-if {"" == $match_f75} { set match75 $default(f75) }
-if {"" == $match_f85} { set match85 $default(f85) }
-if {"" == $match_f95} { set match95 $default(f95) }
-
-if {"" == $locked} { set match_locked $default(locked) }
+}
 
 set page_title "[_ intranet-translation.lt_Edit_Trados_Matrix_of]"
-if {"" != $match100} { set page_title "[_ intranet-translation.lt_New_Trados_Matrix_of_]" }
+set page_title "[_ intranet-translation.lt_New_Trados_Matrix_of_]"
 set context_bar [im_context_bar $page_title]
 set focus {}
 

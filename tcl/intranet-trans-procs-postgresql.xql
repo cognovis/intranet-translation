@@ -15,55 +15,6 @@
   </rdbms>
   
 
-
-  <fullquery name="im_trans_trados_matrix_project.matrix_select">
-    <querytext>
-
-select
-        m.*,
-        acs_object__name(o.object_id) as object_name
-from
-        acs_objects o
-      LEFT JOIN
-        im_trans_trados_matrix m USING (object_id)
-where
-        o.object_id = :project_id
-      
-    </querytext>
-  </fullquery>
-
-
-  <fullquery name="im_trans_trados_matrix_company.matrix_select">
-    <querytext>
-		select
-		        m.*,
-		        acs_object__name(o.object_id) as object_name
-		from
-		        acs_objects o
-		      LEFT JOIN
-		        im_trans_trados_matrix m USING (object_id)
-		where
-		        o.object_id = :company_id
-    </querytext>
-  </fullquery>
-
-
-  <fullquery name="im_trans_trados_matrix_internal.matrix_select">
-    <querytext>
-
-select
-        m.*,
-        acs_object__name(o.object_id) as object_name
-from
-        acs_objects o
-      LEFT JOIN
-        im_trans_trados_matrix m USING (object_id)
-where
-        o.object_id = :company_id
-      
-    </querytext>
-  </fullquery>
-
   <fullquery name="im_task_status_component.task_status_sql">
     <querytext>
 select

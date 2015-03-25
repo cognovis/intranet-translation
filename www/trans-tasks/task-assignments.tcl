@@ -377,6 +377,13 @@ db_foreach select_tasks $task_sql {
                 set ${type}_langs($assignee_id) "${source_language_id}-${target_language_id}"
                 
                 # Get the number of units for the type / UOM combination
+                if {[lsearch [list trans edit proof] $type]>-1} {
+                    # First multiple the units with the proper cat matrix for this work of the freelancer
+                    set assignee_company_id [im_translation_freelance_company -freelance_id $assignee_id]
+
+                    set task_units [im_trans_trados_matrix_calculate $assignee_company_id $match_x $match_rep $match100 $match95 $match85 $match75 $match50 $match0 \
+                                        $match_perf $match_cfr $match_f95 $match_f85 $match_f75 $match_f50 $locked $type]
+                }
                 if {[info exists ${type}-${task_uom_id}($assignee_id)]} {
                     set ${type}-${task_uom_id}($assignee_id) [expr $task_units + [set ${type}-${task_uom_id}($assignee_id)]]
                 } else {
@@ -435,24 +442,26 @@ if {[llength freelance_ids]>0} {
     "
 
     foreach freelancer_id $freelance_ids {
+        set freelance_company_id [im_translation_freelance_company -freelance_id $freelancer_id]
+        set freelance_company_url [export_vars -base "/intranet/companies/view" -url {{company_id $freelance_company_id}}]
         append price_html "
             <tr>
-    	    <td>[im_name_from_user_id $freelancer_id]</td>
+    	    <td><a href='$freelance_company_url'>[im_name_from_user_id $freelancer_id]</a></td>
         "
         
         # Check for each of the assignments        
         foreach type [list trans edit proof other] {
-            set freelance_company_id [im_translation_freelance_company -freelance_id $freelancer_id]
             
             # We try to find the correct trans type id. If we have prices maintained though for Trans as well as Trans / Edit, we will most likely not get the proper result, especially not if we have two different Project Types which have 
             # Trans on it's own but are referrenced for the same company.
             set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 = :type and category_type = 'Intranet Project Type' limit 1" -default ""]
             
-            ds_comment "$freelancer_id :: $freelance_company_id :: $task_type_id"
             if {$task_type_id eq ""} {
                 set freelance_company_id [im_company_freelance]
                 set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 like '%${type}%' and category_type = 'Intranet Project Type' limit 1" -default ""]
             }
+            
+            # Find out the best price
             if {$task_type_id eq ""} {
                 set price ""
             } else {
@@ -481,6 +490,7 @@ if {[llength freelance_ids]>0} {
                 limit 1
                 "
             }
+            
             
             if {[lsearch [set ${type}_assignee_ids] $freelancer_id]>-1} {
                 set ${type}_uom_ids($freelancer_id) [list]
