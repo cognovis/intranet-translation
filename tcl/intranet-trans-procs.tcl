@@ -607,12 +607,19 @@ ad_proc -public im_trans_trados_matrix_calculate_helper {
 
     if {"" == $px_words} { set px_words 0 }
     if {"" == $prep_words} { set prep_words 0 }
+    if {"" == $pcfr_words} { set pcfr_words 0 }
     if {"" == $p100_words} { set p100_words 0 }
     if {"" == $p95_words} { set p95_words 0 }
     if {"" == $p85_words} { set p85_words 0 }
     if {"" == $p75_words} { set p75_words 0 }
     if {"" == $p50_words} { set p50_words 0 }
     if {"" == $p0_words} { set p0_words 0 }
+    if {"" == $f95_words} { set f95_words 0 }
+    if {"" == $f85_words} { set f85_words 0 }
+    if {"" == $f75_words} { set f75_words 0 }
+    if {"" == $f50_words} { set f50_words 0 }
+    if {"" == $locked_words} { set locked_words 0 }
+    if {"" == $pperfect_words} { set pperfect_words 0 }
 
     ns_log NOTICE "intranet-trans-procs::im_trans_trados_matrix_calculate_helper: Getting matrix for object_id: $object_id"
     array set matrix [im_trans_trados_matrix -task_type $task_type $object_id]
