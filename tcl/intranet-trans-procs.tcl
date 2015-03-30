@@ -2547,3 +2547,130 @@ ad_proc im_trans_trados_remove_sdlxliff {} {
        catch {db_dml update "update im_trans_tasks set task_filename = :task_filename where task_id = :task_id"}
     }
 }
+
+ad_proc im_trans_prices_populate_providers {
+    {-company_id ""}
+} {
+    Populate Trans prices from previous invoices or bills
+} {
+    # Get the distinct list of prices
+    
+    # task_type_id - im_trans_tasks
+    # Target Language ID - im_trans_tasks
+    # source_langauge_id
+    # subject_area_id
+    # price
+    # currency
+    
+    
+    # Check for each of the assignments        
+    foreach type [list trans edit proof] {
+        
+        # We try to find the correct trans type id. If we have prices maintained though for Trans as well as Trans / Edit, we will most likely not get the proper result, especially not if we have two different Project Types which have 
+        # Trans on it's own but are referrenced for the same company.
+        set task_type_id [db_string task "select category_id from im_categories where aux_string1 = :type and category_type = 'Intranet Project Type' limit 1" -default ""]
+        
+        
+  
+        db_foreach tasks "select distinct c.provider_id, tt.target_language_id, tt.source_language_id, p.subject_area_id, tt.task_units, ii.item_uom_id, ii.item_units, ii.price_per_unit, ii.currency from im_trans_tasks tt, im_invoice_items ii,im_costs c, im_projects p,im_companies co where p.project_id = tt.project_id and ii.task_id = tt.task_id and c.cost_id = ii.invoice_id and c.cost_type_id = 3704 and ii.price_per_unit not in (select price from im_trans_prices where uom_id = ii.item_uom_id and company_id = c.provider_id and task_type_id = tt.task_type_id and target_language_id = tt.target_language_id and source_language_id = tt.source_language_id and subject_area_id = p.subject_area_id and currency = ii.currency) and tt.${type}_id = co.primary_contact_id and co.company_id = c.provider_id and item_uom_id in (320,324)
+            order by provider_id" {
+            if {$price_per_unit eq ""} {continue}
+            if {$item_units == "1.0" && $task_units == "1.0"} {continue}
+            if {$item_units == "1.0" && $task_units > 1} {
+                set price_per_unit [expr $price_per_unit / $task_units]
+            }
+            
+            set existing_price_per_unit [db_string test "select max(price) from im_trans_prices where uom_id = :item_uom_id and company_id = :provider_id and task_type_id = :task_type_id and target_language_id = :target_language_id and source_language_id = :source_language_id and subject_area_id = :subject_area_id and currency = :currency" -default ""]
+            if {$existing_price_per_unit >= $price_per_unit} {
+                ds_comment "Skipping $provider_id :: $price_per_unit"
+                continue
+            }
+            if {$price_per_unit > 0.3 && $item_uom_id == 324} {
+                ds_comment "Too high price $price_per_unit :: $provider_id"
+                continue
+            }
+            db_dml delete_prices "delete from im_trans_prices where uom_id = :item_uom_id and company_id = :provider_id and task_type_id = :task_type_id and target_language_id = :target_language_id and source_language_id = :source_language_id and subject_area_id = :subject_area_id and currency = :currency"
+            set price_per_unit [format "%.3f" $price_per_unit]
+                db_dml price_insert "
+                insert into im_trans_prices (
+                    price_id,
+                    uom_id,
+                    company_id,
+                    task_type_id,
+                    target_language_id,
+                    source_language_id,
+                    subject_area_id,
+                    currency,
+                    price
+                ) values (
+                    nextval('im_trans_prices_seq'),
+                    :item_uom_id,
+                    :provider_id,
+                    :task_type_id,
+                    :target_language_id,
+                    :source_language_id,
+                    :subject_area_id,
+                    :currency,
+                    :price_per_unit
+                )"
+            ds_comment "$provider_id :: $task_type_id :: $target_language_id :: $source_language_id :: $subject_area_id :: $currency$price_per_unit"        
+        } 
+    }
+    
+    # Transfer the prices from timesheet prices
+    # http://kolibri.sussdorff.org/intranet/companies/view?company_id=273588
+    db_foreach timesheet_prices {
+        select uom_id,company_id,task_type_id,currency,price from im_timesheet_prices
+    } {
+        switch $task_type_id {
+            88 - 10000011 - 10000014 {
+                set task_type_id 88
+            }
+            89 - 93 {
+                set task_type_id 93
+            }
+            default {
+                set task_type_id ""
+            }
+        }
+        
+        if {$task_type_id eq ""} {continue} 
+        set existing_price_per_unit [db_string test "select max(price) from im_trans_prices where uom_id = :uom_id and company_id = :company_id and task_type_id = :task_type_id and target_language_id is null and source_language_id is null and subject_area_id is null and currency = :currency" -default ""]
+        
+        if {$existing_price_per_unit >= $price} {
+            ds_comment "Skipping $provider_id :: $price_per_unit"
+            continue
+        }
+        if {$price > 0.3 && $uom_id == 324} {
+            ds_comment "Too high price $price :: $provider_id"
+            continue
+        }
+        
+        db_dml price_insert "
+        insert into im_trans_prices (
+            price_id,
+            uom_id,
+            company_id,
+            task_type_id,
+            target_language_id,
+            source_language_id,
+            subject_area_id,
+            currency,
+            price
+        ) values (
+            nextval('im_trans_prices_seq'),
+            :uom_id,
+            :company_id,
+            :task_type_id,
+            NULL,
+            NULL,
+            NULL,
+            :currency,
+            :price
+        )"
+        ds_comment "inserting trans price $price :: $company_id :: $uom_id"
+    }
+    
+    # update the price types
+    db_dml update "update im_trans_prices set task_type_id = 93 where task_type_id in (87,89,94,2500)"
+}
