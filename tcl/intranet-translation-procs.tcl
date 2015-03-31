@@ -560,6 +560,80 @@ ad_proc -public im_translation_create_purchase_orders {
     
                             db_dml insert_invoice_items $insert_invoice_items_sql
                         }
+                        
+                        if {$rate ne "" && $rate >0} {
+                            # Check if we have the rate already in the price list for the freelancer
+                            set list_prices [db_list rate_p "select price from im_trans_prices 
+                            where company_id = :provider_id
+                            and task_type_id = :task_type_id
+                            and uom_id = :task_uom_id
+                            and currency = :currency"]
+                            
+                            if {[lsearch $list_prices $rate]<0} {
+                                # We did not find the price, so insert it.
+                                if {[llength $list_prices] == 0} {
+                                    # We don't have any price at all, so just insert it generic
+
+                                    db_dml price_insert "
+                                    insert into im_trans_prices (
+                                        price_id,
+                                        uom_id,
+                                        company_id,
+                                        task_type_id,
+                                        target_language_id,
+                                        source_language_id,
+                                        subject_area_id,
+                                        currency,
+                                        price
+                                    ) values (
+                                        nextval('im_trans_prices_seq'),
+                                        :task_uom_id,
+                                        :provider_id,
+                                        :task_type_id,
+                                        NULL,
+                                        NULL,
+                                        NULL,
+                                        :currency,
+                                        :rate
+                                    )"
+                                } else {
+                                    # We have rates, yet not this one, so insert it with as much info as possible
+                                    # But only if we don't have the rate in there yet
+                                    set rate_p [db_string rate_p "select 1 from im_trans_prices
+                                    where uom_id = :task_uom_id
+                                    and   company_id = :provider_id
+                                    and   task_type_id = :task_type_id
+                                    and   target_language_id = :target_language_id
+                                    and   source_language_id = :source_language_id
+                                    and   subject_area_id = :subject_area_id
+                                    and   currency = :currency" -default 0]
+                                    if {!$rate_p} {
+                                        db_dml price_insert "
+                                        insert into im_trans_prices (
+                                            price_id,
+                                            uom_id,
+                                            company_id,
+                                            task_type_id,
+                                            target_language_id,
+                                            source_language_id,
+                                            subject_area_id,
+                                            currency,
+                                            price
+                                        ) values (
+                                            nextval('im_trans_prices_seq'),
+                                            :task_uom_id,
+                                            :provider_id,
+                                            :task_type_id,
+                                            :target_langauge_id,
+                                            :source_language_id,
+                                            $subject_area($task_id),
+                                            :currency,
+                                            :rate
+                                        )"
+                                    }
+                                }
+                            } 
+                        }
                     }
                 }
             

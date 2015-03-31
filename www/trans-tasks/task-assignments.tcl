@@ -415,6 +415,9 @@ foreach freelancer_id [lsort -unique $assignee_ids] {
     }
 }
 
+# ---------------------------------------------------------------
+# Render the Purchase Order creation
+# ---------------------------------------------------------------
 
 set price_html ""
 if {[llength freelance_ids]>0} {
@@ -452,44 +455,6 @@ if {[llength freelance_ids]>0} {
         # Check for each of the assignments        
         foreach type [list trans edit proof other] {
             
-            # We try to find the correct trans type id. If we have prices maintained though for Trans as well as Trans / Edit, we will most likely not get the proper result, especially not if we have two different Project Types which have 
-            # Trans on it's own but are referrenced for the same company.
-            set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 = :type and category_type = 'Intranet Project Type' limit 1" -default ""]
-            
-            if {$task_type_id eq ""} {
-                set freelance_company_id [im_company_freelance]
-                set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 like '%${type}%' and category_type = 'Intranet Project Type' limit 1" -default ""]
-            }
-            
-            # Find out the best price
-            if {$task_type_id eq ""} {
-                set price ""
-            } else {
-                if {[info exists ${type}_langs($freelancer_id)]} {
-                    set langs [split [set ${type}_langs($freelancer_id)] "-"]
-                    set source_language_id [lindex $langs 0]
-                    set target_language_id [lindex $langs 1]
-                } else {
-                    set source_language_id ""
-                    set target_language_id ""
-                }
-                
-                db_1row relevant_price "
-        		select 
-        			im_trans_prices_calc_relevancy (
-        				p.company_id, :freelance_company_id,
-        				p.task_type_id, :task_type_id,
-        				p.subject_area_id, :subject_area_id,
-        				p.target_language_id, :target_language_id,
-        				p.source_language_id, :source_language_id
-        			) as relevancy,
-                p.price
-        		from im_trans_prices p
-                where company_id = :freelance_company_id
-                order by relevancy desc
-                limit 1
-                "
-            }
             
             
             if {[lsearch [set ${type}_assignee_ids] $freelancer_id]>-1} {
@@ -512,9 +477,36 @@ if {[llength freelance_ids]>0} {
                         set uom_id [set ${type}_uom_ids($freelancer_id)]
                         set units [set ${type}-${uom_id}($freelancer_id)]
 
+                        # We try to find the correct trans type id. If we have prices maintained though for Trans as well as Trans / Edit, we will most likely not get the proper result, especially not if we have two different Project Types which have 
+                        # Trans on it's own but are referrenced for the same company.
+                        set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 = :type and category_type = 'Intranet Project Type' limit 1" -default ""]
+                        
+                        if {$task_type_id eq ""} {
+                            set freelance_company_id [im_company_freelance]
+                            set task_type_id [db_string task "select category_id from im_categories where category_id in (select distinct task_type_id from im_trans_prices where company_id = :freelance_company_id) and aux_string1 like '%${type}%' and category_type = 'Intranet Project Type' limit 1" -default ""]
+                        }
+                        
+                        ds_comment "$type ... $freelance_company_id :: $task_type_id"
+                        # Find out the best price
+                        if {$task_type_id eq ""} {
+                            set price ""
+                        } else {
+                            if {[info exists ${type}_langs($freelancer_id)]} {
+                                set langs [split [set ${type}_langs($freelancer_id)] "-"]
+                                set source_language_id [lindex $langs 0]
+                                set target_language_id [lindex $langs 1]
+                            } else {
+                                set source_language_id ""
+                                set target_language_id ""
+                            }
+                            
+                            # Get the price from the database
+                            set price [im_translation_best_rate -provider_id $freelance_company_id -task_type_id $task_type_id -subject_area_id $subject_area_id -target_language_id $target_language_id -source_language_id $source_language_id -task_uom_id $uom_id]
+                            
+                        }
                         append price_html "
                             <td align=left>$units [im_category_from_id $uom_id]</td>
-                            <td><input type=text size=8 maxlength=8 name=${type}_price.$freelancer_id value=\"$price\">
+                            <td><input type=text size=8 name=${type}_price.$freelancer_id value=\"$price\">
                             <input type=hidden name=${type}_uom.$freelancer_id value='$uom_id'></td>
                         "                                
                     }
