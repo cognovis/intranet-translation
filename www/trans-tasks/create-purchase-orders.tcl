@@ -1,14 +1,10 @@
-# /packages/intranet-translation/www/trans-tasks/task-assignments-mass.tcl
+# /packages/intranet-translation/www/trans-tasks/create-purchase-orders.tcl
 #
-# Copyright (C) 2003 - 2009 ]project-open[
+# Copyright (C) 2015 cognovis GmbH
 #
-# All rights reserved. Please check
-# http://www.project-open.com/license/ for details.
 
 ad_page_contract {
-    Purpose: Takes commands from the /intranet/projects/view
-    page and saves changes, deletes tasks and scans for Trados
-    files.
+    Purpose: Create purchase orders for the freelancers
 
     @param return_url the url to return to
     @param project_id group id

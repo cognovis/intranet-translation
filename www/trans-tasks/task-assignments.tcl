@@ -366,11 +366,11 @@ db_foreach select_tasks $task_sql {
                 set task_type_id [im_project_type_${type}] 
                 set material_id [im_material_create_from_parameters -material_uom_id $task_uom_id -material_type_id [im_material_type_translation]]
                 
-                set po_created_p [db_0or1row po_created "select i.invoice_id,i.invoice_nr, price_per_unit, company_contact_id, currency from im_invoice_items ii, im_invoices i, im_trans_tasks t where i.invoice_id = ii.invoice_id and t.task_id = :task_id and item_material_id = :material_id and t.task_id = ii.task_id and company_contact_id = :${type}_id limit 1"]
+                set po_created_p [db_0or1row po_created "select i.invoice_id,i.invoice_nr, item_units, price_per_unit, company_contact_id, currency from im_invoice_items ii, im_invoices i, im_trans_tasks t where i.invoice_id = ii.invoice_id and t.task_id = :task_id and t.task_id = ii.task_id and company_contact_id = :${type}_id limit 1"]
                 
                 if {$po_created_p} {
                     set invoice_url [export_vars -base "/intranet-invoices/view" -url {invoice_id return_url}]
-                    append ${type}_html "<p/><center><a href='$invoice_url'>$invoice_nr</a>: ($price_per_unit $currency)</center><p/>"
+                    append ${type}_html "<p/><center><a href='$invoice_url'>$invoice_nr</a>:<br />$item_units ($price_per_unit $currency)</center><p/>"
                 }
                 
                 lappend ${type}_assignee_ids $assignee_id
@@ -381,8 +381,11 @@ db_foreach select_tasks $task_sql {
                     # First multiple the units with the proper cat matrix for this work of the freelancer
                     set assignee_company_id [im_translation_freelance_company -freelance_id $assignee_id]
 
-                    set task_units [im_trans_trados_matrix_calculate $assignee_company_id $match_x $match_rep $match100 $match95 $match85 $match75 $match50 $match0 \
-                                        $match_perf $match_cfr $match_f95 $match_f85 $match_f75 $match_f50 $locked $type]
+                    set task_units_new [im_trans_trados_matrix_calculate $assignee_company_id $match_x $match_rep $match100 $match95 $match85 $match75 $match50 $match0 \
+                                        $match_perf $match_cfr $match_f95 $match_f85 $match_f75 $match_f50 $locked $type] 
+                    if {$task_units_new ne 0} {
+                        set task_units $task_units_new
+                    }
                 }
                 if {[info exists ${type}-${task_uom_id}($assignee_id)]} {
                     set ${type}-${task_uom_id}($assignee_id) [expr $task_units + [set ${type}-${task_uom_id}($assignee_id)]]
