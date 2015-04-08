@@ -16,7 +16,6 @@ ad_page_contract {
     @author frank.bergmann@project-open.com
 } {
     project_id:integer
-    { return_url "" }
     { orderby "subproject_name" }
     { auto_assigment "" }
     { auto_assigned_words 0 }
@@ -56,7 +55,7 @@ foreach type [list trans edit proof other] {
 	set ${type}_end_dates [list]
 }
 
-if {"" == $return_url} { set return_url [im_url_with_query] }
+set return_url [im_url_with_query]
 
 set bgcolor(0) " class=roweven"
 set bgcolor(1) " class=rowodd"
