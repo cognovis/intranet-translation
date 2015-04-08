@@ -624,7 +624,7 @@ ad_proc -public im_translation_create_purchase_orders {
                                             :task_uom_id,
                                             :provider_id,
                                             :task_type_id,
-                                            :target_langauge_id,
+                                            :target_language_id,
                                             :source_language_id,
                                             $subject_area($task_id),
                                             :currency,
