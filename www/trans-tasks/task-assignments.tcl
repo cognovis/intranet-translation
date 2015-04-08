@@ -172,7 +172,8 @@ select
 	im_email_from_user_id (t.proof_id) as proof_email,
 	im_name_from_user_id (t.proof_id) as proof_name,
 	im_email_from_user_id (t.other_id) as other_email,
-	im_name_from_user_id (t.other_id) as other_name
+	im_name_from_user_id (t.other_id) as other_name,
+	now() as today
 from
 	im_trans_tasks t,
 	im_categories ptype_cat
@@ -353,6 +354,9 @@ db_foreach select_tasks $task_sql {
             if { $this_end_date eq ""} {
                 set this_end_date $end_date
             } 
+            if { $this_end_date eq ""} {
+                set this_end_date $today
+            }
 
             append ${type}_html "<br><input type=text size=25 maxlength=25 name=${type}_end.$task_id value=\"$this_end_date\">"
             
