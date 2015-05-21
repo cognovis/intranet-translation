@@ -416,7 +416,6 @@ ad_form -extend -name $form_id -new_request {
 
 } -new_data {
     
-    db_transaction {
         set project_id [im_project::new \
                             -project_name $project_name \
                             -project_nr $project_nr \
@@ -593,7 +592,6 @@ ad_form -extend -name $form_id -new_request {
         }
         
         
-    }
 
     if {[apm_package_installed_p "intranet-freelance"]} {
         # Append the skills attributes
