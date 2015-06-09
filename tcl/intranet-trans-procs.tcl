@@ -945,7 +945,7 @@ ad_proc im_task_user_select {
     # Deal with task specific resource - only show the guys who match
     # the source- and target language
     if {0 != $source_language_id} {
-        set source_language [im_category_from_id $source_language_id]
+        set source_language [im_category_from_id -translate_p 0 $source_language_id]
 		set source_language_uids [util_memoize [list db_list source_lang_uids "
 			select	user_id
 			from 	im_freelance_skills fs,
@@ -958,7 +958,7 @@ ad_proc im_task_user_select {
     }
 
     if {0 != $target_language_id} {
-        set target_language [im_category_from_id $target_language_id]
+        set target_language [im_category_from_id -translate_p 0 $target_language_id]
 		set target_language_uids [util_memoize [list db_list target_lang_uids "
 			select	user_id
 			from		im_freelance_skills fs,
