@@ -670,23 +670,119 @@ ad_proc -public im_translation_freelance_company_helper {
     return [db_string company "select company_id from acs_rels, im_companies where company_id = object_id_one and object_id_two = :freelance_id and company_status_id in ([template::util::tcl_to_sql_list $company_status_ids]) limit 1" -default [im_company_freelance]]
 }
 
-ad_proc -public -callback im_project_new_redirect -impl translation {
-    {-object_id:required}
-    {-status_id ""}
-    {-type_id ""}
-    {-project_id:required}
-    {-parent_id:required}
+ad_proc -public im_translation_create_project {
     {-company_id:required}
-    {-project_type_id:required}
-    {-project_name:required}
-    {-project_nr:required}
-    {-workflow_key:required}
-    {-return_url:required}
+    {-company_contact_id ""}
+    {-parent_id ""}
+    {-project_name ""}
+    {-project_nr ""}
+    {-project_type_id "[im_project_type_trans_edit]"}
+    {-project_status_id "[im_project_status_open]"}
+    {-source_language_id:required}
+    {-target_language_ids:required}
+    {-project_lead_id ""}
 } {
-    Redurect if needed
+    Create a translation project
 } {
-    # Returnredirect to translations for translation projects
-    if {[im_category_is_a $project_type_id [im_project_type_translation]] && $project_id eq ""} {
-        ad_returnredirect [export_vars -base "/intranet-translation/projects/new" -url {project_type_id project_status_id company_id parent_id project_nr project_name workflow_key return_url project_id}]
+    
+    # Auto get the project_nr if missing
+    if {$project_nr eq ""} {
+        set project_nr [im_next_project_nr -customer_id $company_id -parent_id $parent_id]
     }
+    
+    # Auto set the project_name
+    if {$project_name eq ""} {
+        set project_name $project_nr
+    }
+
+    set project_path [string tolower [string trim $project_name]]
+    
+    set project_id [im_project::new \
+        -project_name $project_name \
+        -project_nr $project_nr \
+        -project_path $project_path \
+        -company_id $company_id \
+        -parent_id $parent_id \
+        -project_type_id $project_type_id \
+        -project_status_id $project_status_id \
+    ]
+    
+    if {$project_lead_id ne ""} {
+        set role_id [im_biz_object_role_project_manager]
+        im_biz_object_add_role $project_lead_id $project_id $role_id
+        db_dml update_project "update im_projects set project_lead_id = :project_lead_id where project_id = :project_id"
+    }
+    
+    # Deal with translation workflows
+    set wf_key [db_string wf "select aux_string1 from im_categories where category_id = :project_type_id" -default ""]
+    set wf_exists_p [db_string wf_exists "select count(*) from wf_workflows where workflow_key = :wf_key"]
+    if {$wf_exists_p} { set workflow_key $wf_key }
+    
+    if {[exists_and_not_null workflow_key]} {
+        # Create a new workflow case (instance)
+        set context_key ""        
+        set case_id [wf_case_new \
+                             $workflow_key \
+                             $context_key \
+                             $project_id \
+                            ]
+            
+        # Determine the first task in the case to be executed and start+finisch the task.
+        im_workflow_skip_first_transition -case_id $case_id    
+    }
+    
+    # Save the information about the project target languages
+    # in the im_target_languages table
+    db_dml delete_im_target_language "delete from im_target_languages where project_id=:project_id"
+
+    foreach lang $target_language_ids {
+        ns_log Notice "target_language=$lang"
+        set sql "insert into im_target_languages values ($project_id, $lang)"
+        db_dml insert_im_target_language $sql 
+        if {[im_table_exists im_freelancers]} {
+            im_freelance_add_required_skills -object_id $project_id -skill_type_id [im_freelance_skill_type_target_language] -skill_ids $lang
+        }
+    }
+    
+    # Add the source language as a skill
+    if {[im_table_exists im_freelancers]} {
+        im_freelance_add_required_skills -object_id $project_id -skill_type_id [im_freelance_skill_type_source_language] -skill_ids $source_language_id
+    }
+    db_dml update_project "update im_projects set source_language_id = :source_language_id where project_id = :project_id"
+    
+    if {[info exists company_contact_id]} {
+        db_dml update_project "update im_projects set company_contact_id = :company_contact_id where project_id = :project_id"
+    }
+    
+    # ---------------------------------------------------------------------
+    # Create the directory structure necessary for the project
+    # ---------------------------------------------------------------------
+    
+    # If the filestorage module is installed...
+    set fs_installed_p [im_table_exists im_fs_folders]
+    if {$fs_installed_p} {
+        set create_err ""
+        if { [catch {
+                set create_err [im_filestorage_create_directories $project_id]
+            } err_msg] 
+        } {
+            ad_return_complaint 1 "<li>err_msg: $err_msg<br>create_err: $create_err<br>"
+            return
+        }
+    }
+    
+    # Write Audit Trail
+    im_project_audit -project_id $project_id  -type_id $project_type_id -status_id $project_status_id -action after_create
+
+    # -----------------------------------------------------------------
+    # Flush caches related to the project's information
+    
+    util_memoize_flush_regexp "im_project_has_type_helper.*"
+    util_memoize_flush_regexp "db_list_of_lists company_info.*"
+    
+    # -----------------------------------------------------------------
+    # Call the "project_create" or "project_update" user_exit
+    
+    return $project_id
 }
+
