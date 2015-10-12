@@ -676,11 +676,13 @@ ad_proc -public im_translation_create_project {
     {-parent_id ""}
     {-project_name ""}
     {-project_nr ""}
-    {-project_type_id "[im_project_type_trans_edit]"}
-    {-project_status_id "[im_project_status_open]"}
+    {-project_type_id ""}
+    {-project_status_id ""}
     {-source_language_id:required}
     {-target_language_ids:required}
     {-project_lead_id ""}
+    {-final_company ""}
+    {-subject_area_id ""}
 } {
     Create a translation project
 } {
@@ -696,6 +698,13 @@ ad_proc -public im_translation_create_project {
     }
 
     set project_path [string tolower [string trim $project_name]]
+
+    # Use sensible defaults
+    if {$project_type_id eq ""} {set project_type_id [im_project_type_trans_edit]}
+    if {$project_status_id eq ""} {set project_status_id [im_project_status_open]}
+    set start_date [db_string get_today "select now()::date"]
+    set end_date $start_date
+
     
     set project_id [im_project::new \
         -project_name $project_name \
@@ -707,11 +716,14 @@ ad_proc -public im_translation_create_project {
         -project_status_id $project_status_id \
     ]
     
+    # Add the project Manager
     if {$project_lead_id ne ""} {
         set role_id [im_biz_object_role_project_manager]
         im_biz_object_add_role $project_lead_id $project_id $role_id
-        db_dml update_project "update im_projects set project_lead_id = :project_lead_id where project_id = :project_id"
     }
+    
+    db_dml update_project "update im_projects set project_lead_id = :project_lead_id, end_date = :end_date, start_date = :start_date, final_company = :final_company, subject_area_id = :subject_area_id where project_id = :project_id"
+    
     
     # Deal with translation workflows
     set wf_key [db_string wf "select aux_string1 from im_categories where category_id = :project_type_id" -default ""]

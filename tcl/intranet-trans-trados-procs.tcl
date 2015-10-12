@@ -738,6 +738,9 @@ ad_proc -public im_trans_trados_create_quote {
 		set billable_units [im_trans_trados_matrix_calculate $company_id $px_words $prep_words $p100_words $p95_words $p85_words $p75_words $p50_words $p0_words \
 				   $pperfect_words $pcrossfilerepeated_words $f95_words $f85_words $f75_words $f50_words $locked_words]
 	
+		# Inter-Company invoicing enabled?
+		set interco_p [parameter::get_from_package_key -package_key "intranet-translation" \
+		 	-parameter "EnableInterCompanyInvoicingP" -default 0]
 		set billable_units_interco $billable_units
 		if {$interco_p} {
 			set interco_company_id [db_string get_interco_company "select interco_company_id from im_projects where project_id=$project_id" -default ""]
@@ -755,39 +758,13 @@ ad_proc -public im_trans_trados_create_quote {
 		set task_uom_id 324	
 		set invoice_id ""
 	
-	
-		append page_body "
-	<tr $bgcolor([expr $ctr % 2])>
-	  <td>$filename</td>
-	  <td>$task_name</td>
-	  <td>$px_words</td>
-	  <td>$prep_words</td>
-	  <td>$p100_words</td>
-	  <td>$p95_words</td>
-	  <td>$p85_words</td>
-	  <td>$p75_words</td>
-	  <td>$p50_words</td>
-	  <td>$p0_words</td>
-	
-	  <td>$pperfect_words</td>
-	  <td>$pcrossfilerepeated_words</td>
-	
-	  <td>$f95_words</td>
-	  <td>$f85_words</td>
-	  <td>$f75_words</td>
-	  <td>$f50_words</td>
-	
-	  <td>$locked_words</td>
-	
-	  <td>$task_units</td>
-	</tr>
-		"
-	
 		# Add a new task for every project target language
 		set insert_sql ""
-		foreach target_language_id $target_language_ids {
-	
-			if { [catch {
+		
+		# Check for accents and other non-ascii characters
+		set charset [ad_parameter -package_id [im_package_filestorage_id] FilenameCharactersSupported "" "alphanum"]
+
+		foreach target_language_id [im_target_language_ids $project_id] {
 		
 				set task_name_comps [split $task_name "/"]
 				set task_name_len [expr [llength $task_name_comps] - 1]
@@ -806,12 +783,11 @@ ad_proc -public im_trans_trados_create_quote {
 						null,			-- task_id
 						'im_trans_task',	-- object_type
 						now(),			-- creation_date
-						:user_id,		-- creation_user
-						:ip_address,		-- creation_ip	
+						:project_lead_id,		-- creation_user
+						'0.0.0.0.',		-- creation_ip	
 						null,			-- context_id	
-			
 						:project_id,		-- project_id	
-						:task_type_id,		-- task_type_id	
+						:project_type_id,		-- task_type_id	
 						:task_status_id,	-- task_status_id
 						:source_language_id,	-- source_language_id
 						:target_language_id,	-- target_language_id
@@ -846,30 +822,25 @@ ad_proc -public im_trans_trados_create_quote {
 						task_id = :new_task_id
 						"
 				}
-			} err_msg] } {
-				# Failed to create translation task
-				incr err_count
-				append page_body "
-				<tr><td colspan=10>$insert_sql</td></tr>
-				<tr><td colspan=10><font color=red>$err_msg</font></td></tr>
-				 "
-			} else {
+
 		
 				# Successfully created translation task
 				# Call user_exit to let TM know about the event
 				im_user_exit_call trans_task_create $new_task_id
-				im_audit -object_type "im_trans_task" -action after_create -object_id $new_task_id -status_id $task_status_id -type_id $task_type_id
+				im_audit -object_type "im_trans_task" -action after_create -object_id $new_task_id -status_id $task_status_id -type_id $project_type_id
 				lappend created_task_ids $new_task_id
-			}
+			
 	
 		} 
 		# end of foreach
 	}
 	#end of the for loop
-	
-	# Now that all tasks are created, create the invoices
-	set tasks_where_clause "task_id in ([join $in_clause_list ","])"
 
+	if {0} {
+	# ---------------------------------------------------------------
+	# Create the invoice
+	# ---------------------------------------------------------------
+	
 	# Get the payment days from the company
 	set payment_term_id [db_string default_payment_days "select payment_term_id from im_companies where company_id = :company_id" -default ""]
 	set payment_days ""
@@ -903,6 +874,7 @@ ad_proc -public im_trans_trados_create_quote {
 	set invoice_id [im_new_object_id]
 	set invoice_nr [im_next_invoice_nr -cost_type_id $cost_type_id]
 	set invoice_date [db_string get_today "select now()::date"]
+
 
 
 	# ---------------------------------------------------------------
@@ -998,4 +970,5 @@ ad_proc -public im_trans_trados_create_quote {
 	
 	# Audit creation
 	im_audit -object_type "im_invoice" -object_id $invoice_id -action after_create -status_id $cost_status_id -type_id $cost_type_id
+	}
 }
