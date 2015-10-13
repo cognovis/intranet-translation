@@ -93,7 +93,7 @@ ad_proc -public im_translation_best_match_price {
     set best_match_price 0
     set best_match_min_price 0
     
-    db_0or1row references_prices "
+    set references_prices_sql "
         select 
             p.price_id as best_match_price_id,
             p.relevancy as price_relevancy,
@@ -159,6 +159,8 @@ ad_proc -public im_translation_best_match_price {
         limit 1
     "
     
+    db_0or1row reference_prices $references_prices_sql
+
     # Minimum Price Logic
     # Not supported yet
     if {0} {
