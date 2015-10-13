@@ -74,6 +74,108 @@ ad_proc -public im_translation_best_rate {
     " -default 0]
 }
 
+ad_proc -public im_translation_best_match_price {
+    -company_id
+    -task_type_id
+    {-subject_area_id ""}
+    -target_language_id
+    -source_language_id
+    {-file_type_id ""}
+    {-invoice_currency "EUR"}
+    -task_uom_id
+} {
+    Calculate the best match price for a customer.
+    Complicated undertaking, because the price depends on a number of variables, depending on client etc. As a solution, we act like a search engine, return all prices and rank them according to relevancy. We take only the first (=highest rank) line for the actual price proposal.
+    
+    
+} {
+    set number_format "9999990.099"
+    set best_match_price 0
+    set best_match_min_price 0
+    
+    set references_prices_sql "
+        select 
+            p.price_id as best_match_price_id,
+            p.relevancy as price_relevancy,
+            p.price,
+            trim(' ' from to_char(p.price,:number_format)) as best_match_price,
+            p.min_price as best_match_min_price,
+            trim(' ' from to_char(p.min_price,:number_format)) as min_price_formatted,
+            p.company_id as price_company_id,
+            p.uom_id as uom_id,
+            p.task_type_id as task_type_id,
+            p.target_language_id as target_language_id,
+            p.source_language_id as source_language_id,
+            p.subject_area_id as subject_area_id,
+            p.file_type_id as file_type_id,
+            p.valid_from,
+            p.valid_through,
+            p.price_note,
+            c.company_path as price_company_name,
+                im_category_from_id(p.uom_id) as price_uom,
+                im_category_from_id(p.task_type_id) as price_task_type,
+                im_category_from_id(p.target_language_id) as price_target_language,
+                im_category_from_id(p.source_language_id) as price_source_language,
+                im_category_from_id(p.subject_area_id) as price_subject_area,
+                im_category_from_id(p.file_type_id) as price_file_type
+        from
+            (
+                (select 
+                    im_trans_prices_calc_relevancy (
+                        p.company_id,:company_id,
+                        p.task_type_id, :task_type_id,
+                        p.subject_area_id, :subject_area_id,
+                        p.target_language_id, :target_language_id,
+                        p.source_language_id, :source_language_id,
+                        p.file_type_id, :file_type_id
+                    ) as relevancy,
+                    p.price_id,
+                    p.price,
+                    p.min_price,
+                    p.company_id,
+                    p.uom_id,
+                    p.task_type_id,
+                    p.target_language_id,
+                    p.source_language_id,
+                    p.subject_area_id,
+                    p.file_type_id,
+                    p.valid_from,
+                    p.valid_through,
+                    p.note as price_note
+                from im_trans_prices p
+                where
+                    uom_id=:task_uom_id
+                    and currency=:invoice_currency
+                )
+            ) p,
+            im_companies c
+        where
+            p.company_id=c.company_id
+            and relevancy >= 0
+        order by
+            p.relevancy desc,
+            p.company_id,
+            p.uom_id
+        limit 1
+    "
+    
+    db_0or1row reference_prices $references_prices_sql
+
+    # Minimum Price Logic
+    # Not supported yet
+    if {0} {
+        regsub -all {,} $best_match_price {.} best_match_price
+        regsub -all {,} $task_sum {.} task_sum
+        if {[expr $best_match_price * $task_sum] < $best_match_min_price} {
+            set task_sum 1
+            set task_title "$task_title [lang::message::lookup "" intranet-trans-invoices.Min_Price_Min "(Minimum Fee)"]"
+            set task_uom_id [im_uom_unit]
+            set task_uom [im_category_from_id $task_uom_id]
+            set best_match_price $best_match_min_price
+        }
+    }
+    return $best_match_price
+}
 
 ad_proc -public im_translation_create_purchase_orders {
     -project_id
@@ -670,23 +772,131 @@ ad_proc -public im_translation_freelance_company_helper {
     return [db_string company "select company_id from acs_rels, im_companies where company_id = object_id_one and object_id_two = :freelance_id and company_status_id in ([template::util::tcl_to_sql_list $company_status_ids]) limit 1" -default [im_company_freelance]]
 }
 
-ad_proc -public -callback im_project_new_redirect -impl translation {
-    {-object_id:required}
-    {-status_id ""}
-    {-type_id ""}
-    {-project_id:required}
-    {-parent_id:required}
+ad_proc -public im_translation_create_project {
     {-company_id:required}
-    {-project_type_id:required}
-    {-project_name:required}
-    {-project_nr:required}
-    {-workflow_key:required}
-    {-return_url:required}
+    {-company_contact_id ""}
+    {-parent_id ""}
+    {-project_name ""}
+    {-project_nr ""}
+    {-project_type_id ""}
+    {-project_status_id ""}
+    {-source_language_id:required}
+    {-target_language_ids:required}
+    {-project_lead_id ""}
+    {-final_company ""}
+    {-subject_area_id ""}
 } {
-    Redurect if needed
+    Create a translation project
 } {
-    # Returnredirect to translations for translation projects
-    if {[im_category_is_a $project_type_id [im_project_type_translation]] && $project_id eq ""} {
-        ad_returnredirect [export_vars -base "/intranet-translation/projects/new" -url {project_type_id project_status_id company_id parent_id project_nr project_name workflow_key return_url project_id}]
+    
+    # Auto get the project_nr if missing
+    if {$project_nr eq ""} {
+        set project_nr [im_next_project_nr -customer_id $company_id -parent_id $parent_id]
     }
+    
+    # Auto set the project_name
+    if {$project_name eq ""} {
+        set project_name $project_nr
+    }
+
+    set project_path [string tolower [string trim $project_name]]
+
+    # Use sensible defaults
+    if {$project_type_id eq ""} {set project_type_id [im_project_type_trans_edit]}
+    if {$project_status_id eq ""} {set project_status_id [im_project_status_open]}
+    set start_date [db_string get_today "select now()::date"]
+    set end_date $start_date
+
+    
+    set project_id [im_project::new \
+        -project_name $project_name \
+        -project_nr $project_nr \
+        -project_path $project_path \
+        -company_id $company_id \
+        -parent_id $parent_id \
+        -project_type_id $project_type_id \
+        -project_status_id $project_status_id \
+    ]
+    
+    # Add the project Manager
+    if {$project_lead_id ne ""} {
+        set role_id [im_biz_object_role_project_manager]
+        im_biz_object_add_role $project_lead_id $project_id $role_id
+    }
+    
+    db_dml update_project "update im_projects set project_lead_id = :project_lead_id, end_date = :end_date, start_date = :start_date, final_company = :final_company, subject_area_id = :subject_area_id where project_id = :project_id"
+    
+    
+    # Deal with translation workflows
+    set wf_key [db_string wf "select aux_string1 from im_categories where category_id = :project_type_id" -default ""]
+    set wf_exists_p [db_string wf_exists "select count(*) from wf_workflows where workflow_key = :wf_key"]
+    if {$wf_exists_p} { set workflow_key $wf_key }
+    
+    if {[exists_and_not_null workflow_key]} {
+        # Create a new workflow case (instance)
+        set context_key ""        
+        set case_id [wf_case_new \
+                             $workflow_key \
+                             $context_key \
+                             $project_id \
+                            ]
+            
+        # Determine the first task in the case to be executed and start+finisch the task.
+        im_workflow_skip_first_transition -case_id $case_id    
+    }
+    
+    # Save the information about the project target languages
+    # in the im_target_languages table
+    db_dml delete_im_target_language "delete from im_target_languages where project_id=:project_id"
+
+    foreach lang $target_language_ids {
+        ns_log Notice "target_language=$lang"
+        set sql "insert into im_target_languages values ($project_id, $lang)"
+        db_dml insert_im_target_language $sql 
+        if {[im_table_exists im_freelancers]} {
+            im_freelance_add_required_skills -object_id $project_id -skill_type_id [im_freelance_skill_type_target_language] -skill_ids $lang
+        }
+    }
+    
+    # Add the source language as a skill
+    if {[im_table_exists im_freelancers]} {
+        im_freelance_add_required_skills -object_id $project_id -skill_type_id [im_freelance_skill_type_source_language] -skill_ids $source_language_id
+    }
+    db_dml update_project "update im_projects set source_language_id = :source_language_id where project_id = :project_id"
+    
+    if {[info exists company_contact_id]} {
+        db_dml update_project "update im_projects set company_contact_id = :company_contact_id where project_id = :project_id"
+    }
+    
+    # ---------------------------------------------------------------------
+    # Create the directory structure necessary for the project
+    # ---------------------------------------------------------------------
+    
+    # If the filestorage module is installed...
+    set fs_installed_p [im_table_exists im_fs_folders]
+    if {$fs_installed_p} {
+        set create_err ""
+        if { [catch {
+                set create_err [im_filestorage_create_directories $project_id]
+            } err_msg] 
+        } {
+            ad_return_complaint 1 "<li>err_msg: $err_msg<br>create_err: $create_err<br>"
+            return
+        }
+    }
+    
+    # Write Audit Trail
+    im_project_audit -project_id $project_id  -type_id $project_type_id -status_id $project_status_id -action after_create
+
+    # -----------------------------------------------------------------
+    # Flush caches related to the project's information
+    
+    util_memoize_flush_regexp "im_project_has_type_helper.*"
+    util_memoize_flush_regexp "db_list_of_lists company_info.*"
+    
+    # -----------------------------------------------------------------
+    # Call the "project_create" or "project_update" user_exit
+    
+    return $project_id
 }
+

@@ -718,6 +718,8 @@ append task_table "\n</tr>\n"
       <td colspan=15 align=left>
         <select name=action>
         <option value='save' selected>[lang::message::lookup "" intranet-translation.Save_Changes "Save Changes"]</option>
+        <option value='save_new_quote' >[lang::message::lookup "" intranet-translation.Save_Changes_new_quote "Save changes and create a new quote"]</option>
+        <option value='save_replace_quote' >[lang::message::lookup "" intranet-translation.Save_Changes_replace_quote "Save changes and replace latest quote"]</option>
         <option value='batch'>[lang::message::lookup "" intranet-translation.Create_Batch "Create Batch"]</option>
         <option value='delete'>[lang::message::lookup "" intranet-translation.Delete "Delete"]</option>
         </select>

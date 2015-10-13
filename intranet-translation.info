@@ -9,11 +9,11 @@
     <singleton-p>t</singleton-p>
     <auto-mount>intranet-translation</auto-mount>
 
-    <version name="4.1.0.0.1" url="http://www.project-open.org/download/apm/intranet-translation-4.1.0.0.1.apm">
+    <version name="4.1.0.0.2" url="http://www.project-open.org/download/apm/intranet-translation-4.1.0.0.2.apm">
         <owner url="mailto:frank.bergmann@project-open.com">Frank Bergmann</owner>
         <vendor url="http://www.project-open.com/">]project-open[</vendor>
 
-        <provides url="intranet-translation" version="4.1.0.0.1"/>
+        <provides url="intranet-translation" version="4.1.0.0.2"/>
         <requires url="acs-workflow" version="4.5"/>
         <requires url="intranet-core" version="4.1.0.0.0"/>
         <requires url="intranet-forum" version="3.4.0.0.0"/>
@@ -39,7 +39,7 @@
            <parameter datatype="number" min_n_values="1" max_n_values="1" name="AutomaticProjectAdvanceP" default="1" description="Enable the automatic calculation of percent completed per translation project? Set this parameter to 0 for manual status updates. Default is '1'."/>
 
            <parameter datatype="number" min_n_values="1" max_n_values="1" name="EnableTaskAssignmentBasedOnSourceTargetLanguageP" default="0" description="In the Translation Task Assignment Page, should we filter users based on their source- and target language? Default is 0 for compatibility with installations without the freelance module. Enabling this option reduces the size of the candidates to who to assign a task, thus reducing error and saving time to project managers."/>
-
+            <parameter datatype="number" min_n_values="1" max_n_values="1" name="QuickProjectCreationP" default="0" description="Enable the quick creation of projects, including the ability to upload a trados analysis. Default is '0'."/>
         </parameters>
 
     </version>
