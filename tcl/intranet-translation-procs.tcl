@@ -74,6 +74,106 @@ ad_proc -public im_translation_best_rate {
     " -default 0]
 }
 
+ad_proc -public im_translation_best_match_price {
+    -company_id
+    -task_type_id
+    {-subject_area_id ""}
+    -target_language_id
+    -source_language_id
+    {-file_type_id ""}
+    {-invoice_currency "EUR"}
+    -task_uom_id
+} {
+    Calculate the best match price for a customer.
+    Complicated undertaking, because the price depends on a number of variables, depending on client etc. As a solution, we act like a search engine, return all prices and rank them according to relevancy. We take only the first (=highest rank) line for the actual price proposal.
+    
+    
+} {
+    set number_format "9999990.099"
+    set best_match_price 0
+    set best_match_min_price 0
+    
+    db_0or1row references_prices "
+        select 
+            p.price_id as best_match_price_id,
+            p.relevancy as price_relevancy,
+            p.price,
+            trim(' ' from to_char(p.price,:number_format)) as best_match_price,
+            p.min_price as best_match_min_price,
+            trim(' ' from to_char(p.min_price,:number_format)) as min_price_formatted,
+            p.company_id as price_company_id,
+            p.uom_id as uom_id,
+            p.task_type_id as task_type_id,
+            p.target_language_id as target_language_id,
+            p.source_language_id as source_language_id,
+            p.subject_area_id as subject_area_id,
+            p.file_type_id as file_type_id,
+            p.valid_from,
+            p.valid_through,
+            p.price_note,
+            c.company_path as price_company_name,
+                im_category_from_id(p.uom_id) as price_uom,
+                im_category_from_id(p.task_type_id) as price_task_type,
+                im_category_from_id(p.target_language_id) as price_target_language,
+                im_category_from_id(p.source_language_id) as price_source_language,
+                im_category_from_id(p.subject_area_id) as price_subject_area,
+                im_category_from_id(p.file_type_id) as price_file_type
+        from
+            (
+                (select 
+                    im_trans_prices_calc_relevancy (
+                        p.company_id,:company_id,
+                        p.task_type_id, :task_type_id,
+                        p.subject_area_id, :subject_area_id,
+                        p.target_language_id, :target_language_id,
+                        p.source_language_id, :source_language_id,
+                        p.file_type_id, :file_type_id
+                    ) as relevancy,
+                    p.price_id,
+                    p.price,
+                    p.min_price,
+                    p.company_id,
+                    p.uom_id,
+                    p.task_type_id,
+                    p.target_language_id,
+                    p.source_language_id,
+                    p.subject_area_id,
+                    p.file_type_id,
+                    p.valid_from,
+                    p.valid_through,
+                    p.note as price_note
+                from im_trans_prices p
+                where
+                    uom_id=:task_uom_id
+                    and currency=:invoice_currency
+                )
+            ) p,
+            im_companies c
+        where
+            p.company_id=c.company_id
+            and relevancy >= 0
+        order by
+            p.relevancy desc,
+            p.company_id,
+            p.uom_id
+        limit 1
+    "
+    
+    # Minimum Price Logic
+    # Not supported yet
+    if {0} {
+        regsub -all {,} $best_match_price {.} best_match_price
+        regsub -all {,} $task_sum {.} task_sum
+        if {[expr $best_match_price * $task_sum] < $best_match_min_price} {
+            set task_sum 1
+            set task_title "$task_title [lang::message::lookup "" intranet-trans-invoices.Min_Price_Min "(Minimum Fee)"]"
+            set task_uom_id [im_uom_unit]
+            set task_uom [im_category_from_id $task_uom_id]
+            set best_match_price $best_match_min_price
+        }
+    }
+    return $best_match_price
+}
 
 ad_proc -public im_translation_create_purchase_orders {
     -project_id

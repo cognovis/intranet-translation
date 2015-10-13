@@ -454,13 +454,12 @@ ad_proc im_trans_trados_remove_sdlxliff {} {
 }
 
 
-ad_proc -public im_trans_trados_create_quote {
+ad_proc -public im_trans_trados_create_tasks {
 	{-project_id:required}
 	{-tm_folder "trados"}
 	{-trados_analysis_xml ""}
 } {
 	Create translation tasks from trados analysis
-	Prepare the quote as well
 } {
 
 	# ---------------------------------------------------------------------
@@ -835,140 +834,4 @@ ad_proc -public im_trans_trados_create_quote {
 		# end of foreach
 	}
 	#end of the for loop
-
-	if {0} {
-	# ---------------------------------------------------------------
-	# Create the invoice
-	# ---------------------------------------------------------------
-	
-	# Get the payment days from the company
-	set payment_term_id [db_string default_payment_days "select payment_term_id from im_companies where company_id = :company_id" -default ""]
-	set payment_days ""
-	if {"" != $payment_term_id} {
-		set payment_days [db_string payment_days "select aux_int1 from im_categories where category_id = :payment_term_id" -default ""] 
-	} 
-	if {$payment_days == ""} {
-		set payment_days [ad_parameter -package_id [im_package_cost_id] "DefaultCompanyInvoicePaymentDays" "" 30] 
-	}
-	
-	set provider_id [im_company_internal]
-
-	# get company information
-	db_1row company_info "select 
-		c.*,
-		o.*,
-		cc.country_name
-	from
-		im_companies c
-	  	LEFT JOIN im_offices o ON c.main_office_id=o.office_id
-	  	LEFT JOIN country_codes cc ON o.address_country_code=cc.iso
-	where 
-		c.company_id = :company_id"
-
-	set company_contact_id [im_invoices_default_company_contact $company_id $project_id]
-	set invoice_office_id [db_string company_main_office_info "select main_office_id from im_companies where company_id = :org_company_id" -default ""]
-	
-	# Create the invoice
-	set cost_type_id [im_cost_type_quote]
-	set cost_status_id [im_cost_status_created]
-	set invoice_id [im_new_object_id]
-	set invoice_nr [im_next_invoice_nr -cost_type_id $cost_type_id]
-	set invoice_date [db_string get_today "select now()::date"]
-
-
-
-	# ---------------------------------------------------------------
-	# GET THE CORRECT VAT
-	# ---------------------------------------------------------------
-
-	db_exec_plsql create_invoice {
-		select im_trans_invoice__new (
-			:invoice_id,
-			'im_trans_invoice',
-			now(),
-			:project_lead_id,
-			'0.0.0.0',
-			null,
-			:invoice_nr,
-			:company_id,
-			:provider_id,
-			null,
-			:invoice_date,
-			'EUR',
-			:default_quote_template_id,
-			:cost_status_id,
-			:cost_type_id,
-			:payment_method_id,
-			:payment_days,
-			'0',
-			:default_vat,
-			:default_tax,
-			null
-		);		
-	}
-
-	# ---------------------------------------------------------------
-	# Now add the tasks as line items to the invoice
-	# ---------------------------------------------------------------
-
-	foreach task_id $created_tasks {
-		
-		
-		# !!!!!!   WORK HERE !!!!!!!!!!!!!!!
-		set name $item_name($nr)
-		set units $item_units($nr)
-		set uom_id $item_uom_id($nr)
-		set material_id $item_material_id($nr)
-		set type_id $item_type_id($nr)
-		set project_id $item_project_id($nr)
-		set rate $item_rate($nr)
-		set currency $item_currency($nr)
-		set sort_order $item_sort_order($nr)
-		ns_log Notice "item($nr, $name, $units, $uom_id, $material_id, $project_id, $rate, $currency)"
-	
-		# Insert only if it's not an empty line from the edit screen
-		if {!("" == [string trim $name] && (0 == $units || "" == $units))} {
-		set item_id [db_nextval "im_invoice_items_seq"]
-		set insert_invoice_items_sql "
-		INSERT INTO im_invoice_items (
-			item_id, item_name, 
-			project_id, invoice_id, 
-			item_units, item_uom_id, item_material_id,
-			price_per_unit, currency, 
-			sort_order, item_type_id, 
-			item_status_id, description
-		) VALUES (
-			:item_id, :name, 
-			:project_id, :invoice_id, 
-			:units, :uom_id, :material_id,
-			:rate, :currency, 
-			:sort_order, :type_id, 
-			null, ''
-		)"
-	
-			db_dml insert_invoice_items $insert_invoice_items_sql
-		}
-	}
-	
-	# Update the invoice amount based on the invoice items
-	im_invoice_update_rounded_amount -invoice_id $invoice_id
-	
-	# Add a relationship to all related projects
-	db_exec_plsql insert_acs_rels "
-			DECLARE
-				v_rel_id	integer;
-			BEGIN
-				v_rel_id := acs_rel.new(
-					object_id_one => :project_id,
-					object_id_two => :invoice_id
-				);
-			END;
-		   "
-	
-	
-	db_release_unused_handles
-	
-	# Audit creation
-	im_audit -object_type "im_invoice" -object_id $invoice_id -action after_create -status_id $cost_status_id -type_id $cost_type_id
-	}
 }

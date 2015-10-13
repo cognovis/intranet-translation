@@ -178,9 +178,12 @@ ad_form -name $form_id -html { enctype multipart/form-data } -action /intranet-t
         }
 
         # Analyse it
-        im_trans_trados_create_quote \
+        im_trans_trados_create_tasks \
             -project_id $project_id \
             -trados_analysis_xml $trados_files_content
+            
+        # Create the quote
+        im_trans_invoice_create_from_tasks -project_id $project_id
     }
       
      
