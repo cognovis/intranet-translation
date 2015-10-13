@@ -29,7 +29,6 @@ ad_page_contract {
     {project_name ""}
     {workflow_key ""}
     {return_url ""}
-    {project_id:integer,optional}
     target_language_ids:multiple,optional
 }
 
