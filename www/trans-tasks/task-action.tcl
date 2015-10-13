@@ -122,163 +122,178 @@ switch -glob $action {
 	ad_returnredirect "task-list?[export_url_vars project_id return_url]"
     }
 
-    "save" {
-	# Save the changes in billable_units and task_status
-	#
-	set task_list [array names task_status]
-
-	foreach task_id $task_list {
-
-	    set description_value $description($task_id)
-
-	    # Use default values if no InterCo values are available:
-	    if {![info exists billable_units_interco($task_id)]} { 
-		set billable_units_interco($task_id) $billable_units($task_id) 
-	    }
-
-	    regsub {\,} $task_status($task_id) {.} task_status($task_id)
-	    regsub {\,} $task_type($task_id) {.} task_type($task_id)
-	    regsub {\,} $billable_units($task_id) {.} billable_units($task_id)
-	    regsub {\,} $billable_units_interco($task_id) {.} billable_units_interco($task_id)
-
-	    # Static Workflow - just save the values
-	    # The values for status and type are irrelevant
-	    # for the dynamic WF, but they are there for
-	    # compatibility reasons.
-
-            # Fixed error from SAP 080503: Deal with empty billable units
-            set billable_value $billable_units($task_id)
-            if {"" == $billable_value} { set billable_value 0 }
-
-            set billable_value_interco $billable_units_interco($task_id)
-            if {"" == $billable_value_interco} { set billable_value_interco 0 }
-
-	    set trados_reuse_update ""
-	    if {[info exists match_x($task_id)]} {
-		
-		set p_match_x $match_x($task_id)
-		set p_match_rep $match_rep($task_id)
-		set p_match100 $match100($task_id)
-		set p_match95 $match95($task_id)
-		set p_match85 $match85($task_id)
-		set p_match75 $match75($task_id)
-		set p_match50 $match50($task_id)
-		set p_match0 $match0($task_id)
-		ns_log NOTICE "task-action:: Calling im_trans_trados_matrix_calculate (task_id: $task_id): [im_company_freelance] $p_match_x, $p_match_rep, $p_match100, $p_match95, $p_match85, $p_match75, $p_match50, $p_match0"
-		set task_units [im_trans_trados_matrix_calculate [im_company_freelance] $p_match_x $p_match_rep $p_match100 $p_match95 $p_match85 $p_match75 $p_match50 $p_match0]
-		ns_log NOTICE "task-action:: im_trans_trados_matrix_calculate returns task_units: $im_trans_trados_matrix_calculate"
-		set trados_reuse_update ",
-			match_x = :p_match_x,
-			match_rep = :p_match_rep,
-			match100 = :p_match100,
-			match95 = :p_match95,
-			match85 = :p_match85,
-			match75 = :p_match75,
-			match50 = :p_match50,
-			match0 = :p_match0,
-			task_units = :task_units
-		"
-
-	    }
-
-	    set sql "
-                    update im_trans_tasks set
-                	task_status_id= '$task_status($task_id)',
-                	task_type_id= '$task_type($task_id)',
-			billable_units = :billable_value,
-			billable_units_interco = :billable_value_interco,
-                        description = :description_value
-			$trados_reuse_update
-                    where project_id=:project_id
-                    and task_id=:task_id"
-	    db_dml update_task_status $sql
-
-	    # Dynamic Workflow
-	    set task_with_workflow_p 0
-	    if {$wf_installed_p} {
-		set task_with_workflow_p [db_string workflow_p "
-			select count(*) 
-			from wf_cases wfc 
-			where wfc.object_id = :task_id
-		"]
-	    }
-	    ns_log Notice "task-action: wf_installed_p=$wf_installed_p, task_with_workflow_p=$task_with_workflow_p"
-
-	    # There is a WF associated with this task - go and set
-	    # the workflow status/token
-	    if {$task_with_workflow_p} {
-		# - Abort any currently active transitions
-		# - Delete tokens for this case (only: free, locked)
-		# - Create a new token in the target location with type "free"
-
-		set case_id [db_string wf_key "select case_id from wf_cases where object_id = :task_id" -default 0]
-		ns_log Notice "task-action: case_id=$case_id"
-		set journal_id ""
-		set tasks_sql "
-			select task_id as transition_task_id
-			from wf_tasks 
-			where case_id = :case_id
-			      and state in ('started')
-		"
-		db_foreach tasks $tasks_sql {
-		    ns_log Notice "task-action: canceling task $transition_task_id"
-		    set journal_id [wf_task_action $transition_task_id cancel]
-		}
-
-		db_dml delete_tokens "
-			delete from wf_tokens
-			where case_id = :case_id
-			and state in ('free', 'locked')
-		"
-
-		set place_key $task_wf_status($task_id)
-		ns_log Notice "task-action: adding a token to place=$place_key"
-		im_exec_dml add_token "workflow_case__add_token (:case_id, :place_key, :journal_id)"
-
-	    } 
-
-
-	    # Check whether there is a end-date...
-	    if {[info exists end_date($task_id)]} {
-
-		set task_end_date $end_date($task_id)
-
-		# Disabled check for end_date in order to allow adding time
-		if {[regexp {^[0-9][0-9][0-9][0-9]\-[0-9][0-9]\-[0-9][0-9]$} $end_date($task_id)]} {
-		}
-
-		# Store deadline in with the task
-		set update_sql "
-			update im_trans_tasks set 
-				end_date = to_date(:task_end_date,:date_format)
-			where	project_id = :project_id
-				and task_id = :task_id"
-		if {[catch {
-		    db_dml update_task_deadline $update_sql
-		} err_msg]} {
-		    ad_return_complaint 1 "<b>[lang::message::lookup "" intranet-translation.Date_conversion_error "Error converting date string into a database date."]</b><br>&nbsp;<br>
-                    [lang::message::lookup "" intranet-translation.Here_is_the_error "Here is the error. You may copy this text and send it to your system administrator for reference."]<br><pre>$err_msg</pre>
-                    "
-
-		    # Does this smell fishy?
-		    if {[string length $task_end_date] > 40} {
-			im_security_alert \
-			    -location "intranet-translation/www/trans-tasks/task-action: Save" \
-			    -message "Date string too long?" \
-			    -value $task_end_date \
-			    -severity "Normal"
+    "save" - "save_new_quote" - "save_replace_quote" {
+		# Save the changes in billable_units and task_status
+		#
+		set task_list [array names task_status]
+	
+		foreach task_id $task_list {
+	
+		    set description_value $description($task_id)
+	
+		    # Use default values if no InterCo values are available:
+		    if {![info exists billable_units_interco($task_id)]} { 
+			set billable_units_interco($task_id) $billable_units($task_id) 
 		    }
-
-		    ad_script_abort
+	
+		    regsub {\,} $task_status($task_id) {.} task_status($task_id)
+		    regsub {\,} $task_type($task_id) {.} task_type($task_id)
+		    regsub {\,} $billable_units($task_id) {.} billable_units($task_id)
+		    regsub {\,} $billable_units_interco($task_id) {.} billable_units_interco($task_id)
+	
+		    # Static Workflow - just save the values
+		    # The values for status and type are irrelevant
+		    # for the dynamic WF, but they are there for
+		    # compatibility reasons.
+	
+	            # Fixed error from SAP 080503: Deal with empty billable units
+	            set billable_value $billable_units($task_id)
+	            if {"" == $billable_value} { set billable_value 0 }
+	
+	            set billable_value_interco $billable_units_interco($task_id)
+	            if {"" == $billable_value_interco} { set billable_value_interco 0 }
+	
+		    set trados_reuse_update ""
+		    if {[info exists match_x($task_id)]} {
+			
+			set p_match_x $match_x($task_id)
+			set p_match_rep $match_rep($task_id)
+			set p_match100 $match100($task_id)
+			set p_match95 $match95($task_id)
+			set p_match85 $match85($task_id)
+			set p_match75 $match75($task_id)
+			set p_match50 $match50($task_id)
+			set p_match0 $match0($task_id)
+			ns_log NOTICE "task-action:: Calling im_trans_trados_matrix_calculate (task_id: $task_id): [im_company_freelance] $p_match_x, $p_match_rep, $p_match100, $p_match95, $p_match85, $p_match75, $p_match50, $p_match0"
+			set task_units [im_trans_trados_matrix_calculate [im_company_freelance] $p_match_x $p_match_rep $p_match100 $p_match95 $p_match85 $p_match75 $p_match50 $p_match0]
+			ns_log NOTICE "task-action:: im_trans_trados_matrix_calculate returns task_units: $im_trans_trados_matrix_calculate"
+			set trados_reuse_update ",
+				match_x = :p_match_x,
+				match_rep = :p_match_rep,
+				match100 = :p_match100,
+				match95 = :p_match95,
+				match85 = :p_match85,
+				match75 = :p_match75,
+				match50 = :p_match50,
+				match0 = :p_match0,
+				task_units = :task_units
+			"
+	
+		    }
+	
+		    set sql "
+	                    update im_trans_tasks set
+	                	task_status_id= '$task_status($task_id)',
+	                	task_type_id= '$task_type($task_id)',
+				billable_units = :billable_value,
+				billable_units_interco = :billable_value_interco,
+	                        description = :description_value
+				$trados_reuse_update
+	                    where project_id=:project_id
+	                    and task_id=:task_id"
+		    db_dml update_task_status $sql
+	
+		    # Dynamic Workflow
+		    set task_with_workflow_p 0
+		    if {$wf_installed_p} {
+			set task_with_workflow_p [db_string workflow_p "
+				select count(*) 
+				from wf_cases wfc 
+				where wfc.object_id = :task_id
+			"]
+		    }
+		    ns_log Notice "task-action: wf_installed_p=$wf_installed_p, task_with_workflow_p=$task_with_workflow_p"
+	
+		    # There is a WF associated with this task - go and set
+		    # the workflow status/token
+		    if {$task_with_workflow_p} {
+			# - Abort any currently active transitions
+			# - Delete tokens for this case (only: free, locked)
+			# - Create a new token in the target location with type "free"
+	
+			set case_id [db_string wf_key "select case_id from wf_cases where object_id = :task_id" -default 0]
+			ns_log Notice "task-action: case_id=$case_id"
+			set journal_id ""
+			set tasks_sql "
+				select task_id as transition_task_id
+				from wf_tasks 
+				where case_id = :case_id
+				      and state in ('started')
+			"
+			db_foreach tasks $tasks_sql {
+			    ns_log Notice "task-action: canceling task $transition_task_id"
+			    set journal_id [wf_task_action $transition_task_id cancel]
+			}
+	
+			db_dml delete_tokens "
+				delete from wf_tokens
+				where case_id = :case_id
+				and state in ('free', 'locked')
+			"
+	
+			set place_key $task_wf_status($task_id)
+			ns_log Notice "task-action: adding a token to place=$place_key"
+			im_exec_dml add_token "workflow_case__add_token (:case_id, :place_key, :journal_id)"
+	
+		    } 
+	
+	
+		    # Check whether there is a end-date...
+		    if {[info exists end_date($task_id)]} {
+	
+			set task_end_date $end_date($task_id)
+	
+			# Disabled check for end_date in order to allow adding time
+			if {[regexp {^[0-9][0-9][0-9][0-9]\-[0-9][0-9]\-[0-9][0-9]$} $end_date($task_id)]} {
+			}
+	
+			# Store deadline in with the task
+			set update_sql "
+				update im_trans_tasks set 
+					end_date = to_date(:task_end_date,:date_format)
+				where	project_id = :project_id
+					and task_id = :task_id"
+			if {[catch {
+			    db_dml update_task_deadline $update_sql
+			} err_msg]} {
+			    ad_return_complaint 1 "<b>[lang::message::lookup "" intranet-translation.Date_conversion_error "Error converting date string into a database date."]</b><br>&nbsp;<br>
+	                    [lang::message::lookup "" intranet-translation.Here_is_the_error "Here is the error. You may copy this text and send it to your system administrator for reference."]<br><pre>$err_msg</pre>
+	                    "
+	
+			    # Does this smell fishy?
+			    if {[string length $task_end_date] > 40} {
+				im_security_alert \
+				    -location "intranet-translation/www/trans-tasks/task-action: Save" \
+				    -message "Date string too long?" \
+				    -value $task_end_date \
+				    -severity "Normal"
+			    }
+	
+			    ad_script_abort
+			}
+			
+		    }
+		    
+		    # Successfully updated translation task
+		    # Call user_exit to let TM know about the event
+		    im_user_exit_call trans_task_update $task_id
+		    im_audit -object_type "im_trans_task" -object_id $task_id -action "after_update" -status_id $task_status($task_id) -type_id $task_type($task_id)
 		}
 		
-	    }
-	    
-	    # Successfully updated translation task
-	    # Call user_exit to let TM know about the event
-	    im_user_exit_call trans_task_update $task_id
-	    im_audit -object_type "im_trans_task" -object_id $task_id -action "after_update" -status_id $task_status($task_id) -type_id $task_type($task_id)
-	}
+		if {$action eq "save_new_quote"} {
+			set invoice_id [im_trans_invoice_create_from_tasks -project_id $project_id]
+			ad_returnredirect [export_vars -base "/intranet-invoices/view" -url {invoice_id}]
+		} elseif {$action eq "save_replace_quote"} {
+			# Find the latest quote and replace it
+			set invoice_id [db_string quote "select max(cost_id) from im_costs where project_id = :project_id and cost_type_id = [im_cost_type_quote]" -default ""]
+			if {$invoice_id ne ""} {
+				im_trans_invoice_create_from_tasks -project_id $project_id -invoice_id $invoice_id
+			} else {
+				# No quote to replace
+				set invoice_id [im_trans_invoice_create_from_tasks -project_id $project_id]
+			}
+			ad_returnredirect [export_vars -base "/intranet-invoices/view" -url {invoice_id}]
+		}
     }
 
     "delete" {
